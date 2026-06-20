@@ -23,3 +23,6 @@ engine/Package.resolved
 
 # --- Model weights (NEVER commit — external drive only, docs/MODELS.md) ---
 /Volumes/EP2TB/autosub-models/
+
+# --- Generated test fixtures (regenerate via scripts/make_test_fixture.py) ---
+fixtures/

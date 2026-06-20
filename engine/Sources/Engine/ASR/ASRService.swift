@@ -1,15 +1,14 @@
-// ASRService — speech-to-text with word-level timestamps (SPEC §3).
+// ASRService — speech-to-text with word-level timestamps (SPEC §3, §4).
 //
-// Primary impl is WhisperKit (MIT, ANE-accelerated), with a forced-alignment
-// refinement pass (WhisperX-style, ±50 ms target). whisper.cpp sits behind the
-// same protocol as a fallback.
-//
-// v0 status: protocol + WhisperKitASR stub. No real WhisperKit dep yet (TODO in
-// Package.swift). The stub returns an empty transcript so the pipeline compiles.
+// Primary impl is WhisperKit (MIT, ANE-accelerated). We feed it the PCM samples
+// produced by our universal AudioDecoder (decode-not-transcode) rather than a
+// file path, because WhisperKit's own loader uses AVFoundation and can't open
+// MKV. Models load from $AUTOSUB_MODELS/whisperkit (external drive, docs/MODELS.md).
 
 import Foundation
+import WhisperKit
 
-/// One recognized segment with word-level timing.
+/// One recognized word with timing (ms).
 public struct ASRWord: Codable, Sendable {
     public var text: String
     public var startMs: Int
@@ -43,26 +42,54 @@ public struct ASRResult: Codable, Sendable {
     }
 }
 
-/// Transcribes an audio file. Implementations must produce word-level timestamps
-/// (critical for the timing/CPS + forced-alignment stages, SPEC §4).
+/// Transcribes decoded PCM samples. Implementations must produce word-level
+/// timestamps (critical for the timing/CPS + alignment stages, SPEC §4).
 public protocol ASRService: Sendable {
-    func transcribe(audioPath: String, sourceLanguageHint: String?) async throws -> ASRResult
+    func transcribe(samples: [Float], sampleRate: Int,
+                    sourceLanguageHint: String?) async throws -> ASRResult
 }
 
-/// WhisperKit-backed ASR. v0: STUB.
+/// WhisperKit-backed ASR (CoreML/ANE on Apple Silicon).
 public struct WhisperKitASR: ASRService {
     private let modelPaths: ModelPaths
+    private let modelName: String
 
-    public init(modelPaths: ModelPaths) {
+    /// `modelName` is a whisperkit-coreml folder name, e.g. "openai_whisper-base"
+    /// or "openai_whisper-large-v3" (production default).
+    public init(modelPaths: ModelPaths, modelName: String = "openai_whisper-base") {
         self.modelPaths = modelPaths
+        self.modelName = modelName
     }
 
-    public func transcribe(audioPath: String, sourceLanguageHint: String?) async throws -> ASRResult {
-        // TODO(v0): load WhisperKit with its model folder set to
-        // modelPaths.whisperKit (docs/MODELS.md — never the default app-support
-        // dir), run transcription with word timestamps, then a forced-alignment
-        // refinement pass for ±50 ms accuracy.
-        _ = modelPaths.whisperKit
-        return ASRResult(language: sourceLanguageHint ?? "en", segments: [])
+    public func transcribe(samples: [Float], sampleRate: Int,
+                           sourceLanguageHint: String?) async throws -> ASRResult {
+        let folder = modelPaths.whisperKit.appendingPathComponent(modelName).path
+        let config = WhisperKitConfig(
+            model: modelName,
+            downloadBase: modelPaths.hfCache,  // any aux download (tokenizer) → external drive
+            modelFolder: folder,
+            download: false                    // load locally; never the system volume
+        )
+        let pipe = try await WhisperKit(config)
+
+        var options = DecodingOptions()
+        options.wordTimestamps = true                 // needed by the Segmenter
+        options.language = sourceLanguageHint          // nil ⇒ auto-detect
+
+        let results = try await pipe.transcribe(audioArray: samples, decodeOptions: options)
+
+        let segments: [ASRSegment] = results.flatMap { $0.segments }.map { seg in
+            ASRSegment(
+                text: seg.text.trimmingCharacters(in: .whitespaces),
+                startMs: Int(seg.start * 1000),
+                endMs: Int(seg.end * 1000),
+                words: (seg.words ?? []).map {
+                    ASRWord(text: $0.word.trimmingCharacters(in: .whitespaces),
+                            startMs: Int($0.start * 1000), endMs: Int($0.end * 1000))
+                }
+            )
+        }
+        let language = results.first?.language ?? sourceLanguageHint ?? "en"
+        return ASRResult(language: language, segments: segments)
     }
 }

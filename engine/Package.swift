@@ -21,17 +21,18 @@ let package = Package(
         .library(name: "Engine", targets: ["Engine"]),
     ],
     dependencies: [
+        // ASR — WhisperKit (MIT, ANE-accelerated). Models live on the external
+        // drive ($AUTOSUB_MODELS/whisperkit), never bundled (docs/MODELS.md).
+        .package(url: "https://github.com/argmaxinc/WhisperKit.git", from: "0.9.0"),
         // TODO(v0): add a lightweight HTTP server for the loopback daemon, e.g.
         //   .package(url: "https://github.com/httpswift/swifter.git", from: "1.5.0")
-        // Kept out for now to avoid network/build deps in the skeleton.
-        //
-        // TODO(v0): add WhisperKit for ASR once wiring the real pipeline:
-        //   .package(url: "https://github.com/argmaxinc/WhisperKit.git", from: "0.9.0")
     ],
     targets: [
         .target(
             name: "Engine",
-            dependencies: [],
+            dependencies: [
+                .product(name: "WhisperKit", package: "WhisperKit"),
+            ],
             path: "Sources/Engine"
         ),
         .executableTarget(

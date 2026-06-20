@@ -47,9 +47,10 @@ func processCommand(_ args: [String]) async {
     }
 
     // 2. Decode audio straight from the container — no intermediate file.
+    let decoded: DecodedAudio
     do {
-        let audio = try AudioDecoder().decode(videoPath: videoPath)
-        err("[process] decoded \(audio.samples.count) samples @ \(audio.sampleRate)Hz (\(audio.durationMs) ms) — in-memory, no transcode")
+        decoded = try AudioDecoder().decode(videoPath: videoPath)
+        err("[process] decoded \(decoded.samples.count) samples @ \(decoded.sampleRate)Hz (\(decoded.durationMs) ms) — in-memory, no transcode")
     } catch {
         err("[process] decode failed: \(error)")
         exit(EXIT_FAILURE)
@@ -91,9 +92,11 @@ func processCommand(_ args: [String]) async {
                 err("[translate] \(line.text)  →  \(cues[i].text)")
             }
         } else {
-            // Production path: WhisperKit ASR is still a stub (task #3).
+            // Production path: real WhisperKit ASR over the decoded samples.
             let asr = try await WhisperKitASR(modelPaths: modelPaths)
-                .transcribe(audioPath: videoPath, sourceLanguageHint: nil)
+                .transcribe(samples: decoded.samples, sampleRate: decoded.sampleRate,
+                            sourceLanguageHint: nil)
+            err("[process] ASR: \(asr.segments.count) segments, lang=\(asr.language)")
             cues = Segmenter().segment(asr)
             let translator = DictaLMTranslator(modelPaths: modelPaths, chat: chatClient)
             for i in cues.indices {

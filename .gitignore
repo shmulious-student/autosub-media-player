@@ -19,7 +19,7 @@ build/
 # --- Swift engine (SwiftPM) ---
 engine/.build/
 engine/.swiftpm/
-engine/Package.resolved
+# Package.resolved IS committed to pin WhisperKit + transitive deps (reproducible builds).
 
 # --- Model weights (NEVER commit — external drive only, docs/MODELS.md) ---
 /Volumes/EP2TB/autosub-models/

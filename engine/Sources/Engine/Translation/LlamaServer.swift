@@ -63,6 +63,12 @@ public actor LlamaServer {
         guard let exe = Shell.which("llama-server") else {
             throw ShellError.toolNotFound("llama-server")
         }
+        // Free our port first. If a previous daemon didn't shut down cleanly its
+        // llama-server orphans and keeps the port bound; a fresh launch would then
+        // silently fail to bind and we'd reuse that STALE server (wrong config, e.g.
+        // the old slot count) instead of this one. Kill it so our config wins.
+        Self.killStaleServer(onPort: port)
+
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: exe)
         proc.arguments = [
@@ -70,6 +76,12 @@ public actor LlamaServer {
             "--host", host, "--port", String(port),
             "-ngl", String(gpuLayers),     // offload all layers to Metal
             "-c", String(contextSize),
+            // ONE slot. The pipeline sends chunks serially (one await at a time), so
+            // extra slots are never used — but `-np` auto reserves ~4 slots' worth of
+            // KV cache, which on a 24 GB Mac running the 12B alongside the app tips the
+            // system into SWAP and collapses decode (~3 tok/s vs ~20). One slot keeps
+            // the footprint lean; concurrency wouldn't help anyway (measured 1.13x).
+            "-np", "1",
             // Throughput knobs — measured on M4 Pro / DictaLM-12B Q4_K_M. The 12B
             // decode is memory-bandwidth-bound (~19 tok/s single-stream, ~134 GB/s
             // of a ~273 GB/s bus), so request-level parallelism barely helps (1.13x).
@@ -120,6 +132,26 @@ public actor LlamaServer {
     public func stop() {
         process?.terminate()
         process = nil
+    }
+
+    /// Best-effort: SIGKILL whatever currently holds `port` (an orphaned
+    /// llama-server from an unclean previous shutdown). No-op if the port is free
+    /// or `lsof` isn't available.
+    static func killStaleServer(onPort port: Int) {
+        let lsof = Process()
+        lsof.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        lsof.arguments = ["-ti", "tcp:\(port)"]
+        let pipe = Pipe()
+        lsof.standardOutput = pipe
+        lsof.standardError = FileHandle.nullDevice
+        guard (try? lsof.run()) != nil else { return }
+        lsof.waitUntilExit()
+        let out = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        let pids = out.split(whereSeparator: { $0 == "\n" })
+            .compactMap { pid_t($0.trimmingCharacters(in: .whitespaces)) }
+        guard !pids.isEmpty else { return }
+        for pid in pids { kill(pid, SIGKILL) }
+        Thread.sleep(forTimeInterval: 0.3) // let the OS release the socket
     }
 
     /// A chat client bound to this server (safe to use after `start`).

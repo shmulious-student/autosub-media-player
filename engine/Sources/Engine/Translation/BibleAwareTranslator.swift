@@ -46,12 +46,16 @@ public protocol BibleAwareTranslator: Sendable {
     func buildPrompt(line: LineContext, targetLang: String) -> String
 }
 
-/// DictaLM-backed translator. v0: STUB (builds prompt, returns placeholder).
+/// DictaLM-backed translator. Builds the bible-aware prompt and (when a chat
+/// client is attached) runs it on a local llama-server; otherwise returns a
+/// placeholder so the pipeline still composes without a model.
 public struct DictaLMTranslator: BibleAwareTranslator {
     private let modelPaths: ModelPaths
+    private let chat: LlamaChat?
 
-    public init(modelPaths: ModelPaths) {
+    public init(modelPaths: ModelPaths, chat: LlamaChat? = nil) {
         self.modelPaths = modelPaths
+        self.chat = chat
     }
 
     /// PROMPT SHAPE (documented contract):
@@ -112,10 +116,31 @@ public struct DictaLMTranslator: BibleAwareTranslator {
 
     public func translate(line: LineContext, targetLang: String) async throws -> String {
         let prompt = buildPrompt(line: line, targetLang: targetLang)
-        // TODO(v0): run DictaLM 3.0 (GGUF in modelPaths.llm via llama.cpp, or MLX
-        // export) on `prompt`; strip to the translated line only.
-        _ = prompt
-        _ = modelPaths.llm
-        return "[\(targetLang)] \(line.sourceText)" // placeholder
+        guard let chat else {
+            _ = modelPaths.llm
+            return "[\(targetLang)] \(line.sourceText)" // placeholder (no model attached)
+        }
+        let raw = try await chat.complete(system: nil, user: prompt,
+                                          maxTokens: 256, temperature: 0.2)
+        return Self.cleanLine(raw)
+    }
+
+    /// The model is instructed to output ONLY the translated line, but be robust
+    /// to a stray label / surrounding quotes / extra blank lines.
+    static func cleanLine(_ raw: String) -> String {
+        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let range = s.range(of: "TRANSLATION:") {
+            s = String(s[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        // First non-empty line only.
+        s = s.split(separator: "\n").map(String.init)
+            .first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) ?? s
+        // Strip wrapping quotes. NOTE: `Swift.Character` to dodge the engine's
+        // shadowing `Character` model (tracked: rename it to `BibleCharacter`).
+        let quotes: Set<Swift.Character> = ["\"", "“", "”", "'", "«", "»"]
+        if let f = s.first, let l = s.last, quotes.contains(f), quotes.contains(l), s.count > 1 {
+            s = String(s.dropFirst().dropLast())
+        }
+        return s.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

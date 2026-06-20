@@ -35,6 +35,7 @@ func processCommand(_ args: [String]) async {
     }
     let transcriptPath = optionValue(args, "--transcript")
     let target = optionValue(args, "--target") ?? "he"
+    let useDictaLM = (optionValue(args, "--translator") ?? "fixture") == "dictalm"
     let modelPaths = resolveModels()
 
     // 1. Inspect the container's audio tracks (universal codec support).
@@ -54,26 +55,47 @@ func processCommand(_ args: [String]) async {
         exit(EXIT_FAILURE)
     }
 
-    // 3. Build cues + translate.
+    // 3. Optionally load the real DictaLM model into a persistent llama-server.
+    var server: LlamaServer?
+    var chatClient: LlamaChat?
+    if useDictaLM {
+        do {
+            let model = try LlamaServer.findModel(in: modelPaths.llm)
+            err("[process] loading \(model.lastPathComponent) into llama-server …")
+            let s = LlamaServer(modelURL: model)
+            try await s.start()
+            chatClient = await s.client()
+            server = s
+            err("[process] llama-server ready")
+        } catch {
+            err("[process] llama-server start failed: \(error)")
+            exit(EXIT_FAILURE)
+        }
+    }
+
+    // 4. Build cues + translate (through the real BibleAwareTranslator interface).
     var cues: [SubtitleCue]
     do {
         if let transcriptPath {
             let fx = try FixtureTranscript.load(path: transcriptPath)
-            let translator = FixtureTranslator(transcript: fx, modelPaths: modelPaths)
             cues = fx.sourceCues()
+            let translator: any BibleAwareTranslator = useDictaLM
+                ? DictaLMTranslator(modelPaths: modelPaths, chat: chatClient)
+                : FixtureTranslator(transcript: fx, modelPaths: modelPaths)
             for (i, line) in fx.lines.enumerated() {
                 let ctx = fx.lineContext(for: line)
                 if line.addresseeId != nil {
                     err("\n[prompt — gendered line]\n\(translator.buildPrompt(line: ctx, targetLang: target))\n")
                 }
                 cues[i].text = try await translator.translate(line: ctx, targetLang: target)
+                err("[translate] \(line.text)  →  \(cues[i].text)")
             }
         } else {
-            // Production path (real ASR + LLM land in tasks #3/#4).
+            // Production path: WhisperKit ASR is still a stub (task #3).
             let asr = try await WhisperKitASR(modelPaths: modelPaths)
                 .transcribe(audioPath: videoPath, sourceLanguageHint: nil)
             cues = Segmenter().segment(asr)
-            let translator = DictaLMTranslator(modelPaths: modelPaths)
+            let translator = DictaLMTranslator(modelPaths: modelPaths, chat: chatClient)
             for i in cues.indices {
                 let ctx = LineContext(sourceText: cues[i].text)
                 cues[i].text = try await translator.translate(line: ctx, targetLang: target)
@@ -81,8 +103,10 @@ func processCommand(_ args: [String]) async {
         }
     } catch {
         err("[process] translate failed: \(error)")
+        await server?.stop()
         exit(EXIT_FAILURE)
     }
+    await server?.stop()
 
     // 4. Assemble + write the RTL .srt sidecar.
     do {

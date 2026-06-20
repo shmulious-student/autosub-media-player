@@ -51,6 +51,10 @@ so playback is instant.
 | Subtitle QA | **Auto-publish** generated subs as `ready`; user can edit any line anytime (no blocking review gate) |
 | Watch state | **Track & sync** progress/resume/continue-watching/watched across Mac + iPhone |
 | Subtitle styling | Tasteful RTL-aware default, **fully user-customizable** (font/size/position/color/background) |
+| Multi-language | One **active** target per title by default; **generate & store extra target languages on demand** (artifacts keyed by lang) |
+| TMDB matching | **Auto-match with confidence flag + manual "fix match" UI** (search TMDB, reassign title/episode) |
+| Subtitle scope | **Dialogue only** (no on-screen-text/signs, no SDH/sound-effects for now) |
+| Subtitle editor | **Text + timing + per-line AI re-translate** (with bible context); edits mark artifact `has_user_edits` |
 
 ---
 
@@ -107,6 +111,12 @@ Scanner → MetadataEnrich(TMDB) → Grouper(contextual parent) → BibleBootstr
 - **Correction loop:** user edits a character → bible `version` bumps → artifacts
   with older `bible_version_used` for that parent are invalidated & re-queued
   (line-level where possible); `user_corrected` entries are never AI-overwritten.
+- **Subtitle editor:** edit translated text, nudge cue timing, and trigger a
+  **per-line AI re-translation** (re-runs that line through the bible-aware LLM).
+  Edited artifacts are flagged `has_user_edits` and are not silently overwritten
+  by future re-processing.
+- **Scope = dialogue only** (v1): no on-screen-text/sign translation, no SDH /
+  sound-effect captions. (Possible later add.)
 
 ---
 

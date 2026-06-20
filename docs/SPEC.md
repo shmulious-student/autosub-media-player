@@ -47,6 +47,10 @@ so playback is instant.
 | Subtitle display | **Translated-only** default (dual-sub = later) |
 | Subtitle storage | **Portable sidecar (.srt/.ass) next to media + internal indexed copy** |
 | iOS video access | **LAN stream (SMB) + explicit offline pin/download**; remote streaming = later |
+| Audio track | **Whisper auto-detects** spoken language; user picks track when a file has multiple (default = primary) |
+| Subtitle QA | **Auto-publish** generated subs as `ready`; user can edit any line anytime (no blocking review gate) |
+| Watch state | **Track & sync** progress/resume/continue-watching/watched across Mac + iPhone |
+| Subtitle styling | Tasteful RTL-aware default, **fully user-customizable** (font/size/position/color/background) |
 
 ---
 
@@ -107,11 +111,13 @@ Scanner → MetadataEnrich(TMDB) → Grouper(contextual parent) → BibleBootstr
 ---
 
 ## 5. Data model (core entities)
-- **Title** — path, content_hash, container/codec, duration, `contextual_parent_id`, `tmdb_id`, `source_preference(embedded|asr|auto)`, status.
+- **Title** — path, content_hash, container/codec, duration, `audio_tracks[]` (index, language, channels, label), `contextual_parent_id`, `tmdb_id`, `source_preference(embedded|asr|auto)`, `chosen_audio_track`, status.
 - **ContextualParent** — type(series|franchise|standalone), `tmdb_id`, `bible_id`.
 - **CharacterBible** — `contextual_parent_id`, `version`, `locked_by_user`.
 - **Character** — `canonical_name`, `gender(m|f|nb|unknown)`, `name_translations{lang→str}`, aliases[], relationships[], confidence, `user_corrected`.
-- **SubtitleArtifact** — `title_id`, lang, format(srt|ass), source, engine+model+version, `sidecar_path`, `internal_blob_id`, cps_stats, qa_flags[], `bible_version_used`.
+- **SubtitleArtifact** — `title_id`, lang, format(srt|ass), source, engine+model+version, `sidecar_path`, `internal_blob_id`, cps_stats, qa_flags[], `bible_version_used`, `state(ready|editing)`, `has_user_edits`.
+- **WatchState** — `title_id`, `position_sec`, `watched(bool)`, `updated_at`, `device_id`. **Synced** across devices (last-writer-wins on `updated_at`).
+- **SubtitleStylePref** — app-level: font, size, vertical position, text color, background/outline, RTL alignment. Tasteful default, fully user-customizable.
 - **ProcessingJob** — title_id, stage, state(queued|running|paused|failed|done), priority, progress, attempts, error.
 - **SyncRecord** — artifact_id, transport(icloud|lan), state, checksum, device_targets[].
 

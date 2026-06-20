@@ -55,6 +55,10 @@ so playback is instant.
 | TMDB matching | **Auto-match with confidence flag + manual "fix match" UI** (search TMDB, reassign title/episode) |
 | Subtitle scope | **Dialogue only** (no on-screen-text/signs, no SDH/sound-effects for now) |
 | Subtitle editor | **Text + timing + per-line AI re-translate** (with bible context); edits mark artifact `has_user_edits` |
+| Throughput | **Parallel jobs across cores, auto-yield**: throttle/pause processing while a video is actively playing |
+| Existing sub files | **User chooses per title** what to do with pre-existing `.srt/.ass` next to media: use as-is, translate, or ignore & generate |
+| Privacy | **Local-first, opt-in diagnostics** toggle; network used only for TMDB + one-time model downloads |
+| Quality tier | **Auto-pick DictaLM 12B/24B by Mac hardware** (RAM/chip), user-overridable |
 
 ---
 
@@ -91,10 +95,11 @@ so playback is instant.
 
 ```
 Scanner → MetadataEnrich(TMDB) → Grouper(contextual parent) → BibleBootstrap
-→ SourceSelector(embedded sub | ASR) → Demux/AudioExtract → ASR(WhisperKit+align)
-→ Segmenter(CPS/reading-speed) → Translator(bible-aware LLM) → Assembler(.srt/.ass, RTL)
-→ Store(sidecar + SQLite) → SyncServer(iCloud + Bonjour)
-        └─ persistent JobQueue: priority, pause/resume, crash-recoverable ─┘
+→ SourceSelector(embedded sub | external .srt/.ass sidecar | ASR) → Demux/AudioExtract
+→ ASR(WhisperKit+align) → Segmenter(CPS/reading-speed) → Translator(bible-aware LLM)
+→ Assembler(.srt/.ass, RTL) → Store(sidecar + SQLite) → SyncServer(iCloud + Bonjour)
+        └─ persistent JobQueue: priority, pause/resume, crash-recoverable,
+           parallel across cores, AUTO-YIELDS while a video is playing ─┘
 ```
 
 **Quality mechanisms:**

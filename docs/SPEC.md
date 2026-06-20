@@ -197,3 +197,34 @@ Scanner → MetadataEnrich(TMDB) → Grouper(contextual parent) → BibleBootstr
 - **v2:** on a second device, confirm bible+sidecars sync over LAN, video streams
   via SMB, and an offline-pinned title plays with no network.
 - Throughout: in-house Hebrew gender/RTL eval set scored against each model/tier.
+
+---
+
+## 11. Finalized product details (lead decisions)
+These remaining areas were decided directly (no further interview) with defaults
+that fit the locked architecture; revisit any time.
+
+- **Branding / identity:** app name **"AutoSub Media Player"** (short name
+  **"AutoSub"**), bundle id base **`io.smashgames.autosub`**.
+- **First-run setup (macOS):** a one-time wizard that (1) verifies the external
+  model drive is mounted (`$AUTOSUB_MODELS`, default `/Volumes/EP2TB/autosub-models`),
+  blocking with clear guidance if absent; (2) lists required models + sizes;
+  (3) downloads them **to the external drive** with progress + checksum verify.
+  Default fetch: WhisperKit large-v3 (CoreML) + DictaLM 3.0 at the hardware-picked
+  tier; Qwen and extra target-language weights pulled on demand. No model is ever
+  bundled in the app or written to the system volume.
+- **Library scale:** design for **tens of thousands** of titles. SQLite is the
+  source of truth with proper indexes; the iOS-synced index is a compact derived
+  view. Scanning is **incremental + hash-based** (only changed/new files
+  reprocessed). Library UI uses virtualized/lazy lists and on-demand artwork.
+- **Player controls & accessibility:** standard transport (play/pause, seek,
+  ±10s, playback speed, fullscreen), **keyboard shortcuts** on macOS, **Now
+  Playing + remote-command** on iOS, a **subtitle quick-toggle** and quick-restyle
+  overlay, VoiceOver labels, and subtitle defaults that respect Dynamic Type.
+- **Export / sharing:** generated subtitles are already portable `.srt/.ass`
+  sidecars on disk; add an explicit **"Export / share subtitle"** action (macOS
+  save/reveal, iOS share sheet).
+- **Privacy mechanics:** opt-in diagnostics is **off by default**; when enabled,
+  it sends only anonymized crash/usage data behind a clear disclosure. All media,
+  transcripts, bibles, and subtitles stay on-device; the only outbound calls are
+  TMDB metadata lookups and model downloads.

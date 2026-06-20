@@ -19,6 +19,7 @@ class PlayerPage extends StatefulWidget {
     super.key,
     this.videoPath,
     this.subtitlePath,
+    this.autoPlay = false,
   });
 
   /// Absolute path or URL to the video. When null, nothing is opened (v0 stub).
@@ -26,6 +27,9 @@ class PlayerPage extends StatefulWidget {
 
   /// Absolute path to the external `.srt`/`.ass` sidecar.
   final String? subtitlePath;
+
+  /// Start playback immediately once media + subtitle are loaded.
+  final bool autoPlay;
 
   @override
   State<PlayerPage> createState() => _PlayerPageState();
@@ -39,7 +43,15 @@ class _PlayerPageState extends State<PlayerPage> {
   void initState() {
     super.initState();
     _player = Player();
-    _controller = VideoController(_player);
+    // Disable hardware-accelerated rendering: on macOS the HW path can stall to
+    // a spinner with no frame (libmpv decodes fine headless). Software rendering
+    // is reliable for v0; revisit HW accel per-codec later.
+    _controller = VideoController(
+      _player,
+      configuration: const VideoControllerConfiguration(
+        enableHardwareAcceleration: false,
+      ),
+    );
     _maybeOpen();
   }
 
@@ -47,14 +59,18 @@ class _PlayerPageState extends State<PlayerPage> {
     final path = widget.videoPath;
     if (path == null) return;
 
-    // Open the media. We pass `play: false` so the user starts it explicitly.
-    await _player.open(Media(path), play: false);
+    await _player.open(Media(path), play: widget.autoPlay);
+
+    // Dev/auto-play: loop so a subtitle is always on screen for verification.
+    if (widget.autoPlay) {
+      await _player.setPlaylistMode(PlaylistMode.loop);
+    }
 
     // Attach the external subtitle sidecar, if provided.
     final sub = widget.subtitlePath;
     if (sub != null) {
-      // TODO(v0): confirm encoding (UTF-8) + RTL rendering once real Hebrew
-      // sidecars exist. media_kit forwards this to libmpv's sub-add.
+      // media_kit forwards this to libmpv's sub-add; our sidecars are UTF-8 with
+      // RTL embedding controls (SrtAssembler), so Hebrew renders right-to-left.
       await _player.setSubtitleTrack(
         SubtitleTrack.uri(sub, title: 'Hebrew', language: 'he'),
       );
@@ -75,14 +91,16 @@ class _PlayerPageState extends State<PlayerPage> {
       textDirection: TextDirection.rtl,
       child: Scaffold(
         appBar: AppBar(title: const Text('Player')),
-        body: Center(
-          child: widget.videoPath == null
-              ? const Text(
+        // The Video widget must fill its constraints — wrapping it in a Center
+        // collapses it to 0×0 (nothing renders). Give it the whole body.
+        body: widget.videoPath == null
+            ? const Center(
+                child: Text(
                   'No media loaded.\nv0: pick an MKV from the Library.',
                   textAlign: TextAlign.center,
-                )
-              : Video(controller: _controller),
-        ),
+                ),
+              )
+            : Video(controller: _controller),
         floatingActionButton: widget.videoPath == null
             ? null
             : FloatingActionButton(

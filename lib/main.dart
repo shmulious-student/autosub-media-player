@@ -11,6 +11,16 @@ import 'engine/engine_client.dart';
 import 'library/library_page.dart';
 import 'player/player_page.dart';
 
+/// Dev convenience: when built with `--dart-define=DEV_FIXTURE=true`, launch
+/// straight into the v0 fixture player (auto-play) for RTL-subtitle verification.
+const bool kDevFixture = bool.fromEnvironment('DEV_FIXTURE');
+
+/// The generated v0 fixture + its Hebrew sidecar (scripts/make_test_fixture.py).
+const String kFixtureVideo =
+    '/Volumes/EP2TB/autosub-media-player/fixtures/sample.mkv';
+const String kFixtureSub =
+    '/Volumes/EP2TB/autosub-media-player/fixtures/sample.he.srt';
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   // Required one-time init for media_kit / libmpv.
@@ -29,7 +39,13 @@ class AutoSubApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
         useMaterial3: true,
       ),
-      home: const HomePage(),
+      home: kDevFixture
+          ? const PlayerPage(
+              videoPath: kFixtureVideo,
+              subtitlePath: kFixtureSub,
+              autoPlay: true,
+            )
+          : const HomePage(),
     );
   }
 }
@@ -67,6 +83,22 @@ class HomePage extends StatelessWidget {
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => const PlayerPage(),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // v0 dev convenience: open the generated fixture + its Hebrew sidecar
+            // to verify RTL subtitle playback (scripts/make_test_fixture.py).
+            TextButton.icon(
+              icon: const Icon(Icons.science),
+              label: const Text('Play v0 fixture (dev)'),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const PlayerPage(
+                    videoPath: kFixtureVideo,
+                    subtitlePath: kFixtureSub,
+                    autoPlay: true,
+                  ),
                 ),
               ),
             ),

@@ -69,6 +69,10 @@ so playback is instant.
   only (LGPL-safe); ship attributions; **avoid libVLC and x264/x265**. Keep an
   `AVPlayer` fast path for plain MP4/H.264 on iOS; wire `AVAudioSession` +
   background-audio + Now Playing manually.
+- **Audio for ASR — decode, don't transcode:** stream-decode the chosen audio
+  track straight from the original container to in-memory 16 kHz mono PCM (libav,
+  decode-only/LGPL); **no per-video intermediate file**. Universal container/codec
+  coverage out of the box (MKV included), where AVFoundation alone falls short.
 - **ASR:** **WhisperKit** (MIT, ANE-accelerated, Swift, word-level timestamps) as
   primary, with a **forced-alignment refinement pass** (WhisperX-style, ±50 ms
   target) since timing accuracy is critical. whisper.cpp behind the same interface

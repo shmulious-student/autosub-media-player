@@ -67,16 +67,17 @@ class ProcessingManager extends ChangeNotifier {
       }
       if (!online) return;
 
-      // Enqueue any untranslated title we're not already tracking.
+      // Enqueue any untranslated title we're not yet tracking. We do NOT auto-
+      // re-enqueue failed jobs (that would hammer the daemon on a persistent
+      // error like a permission denial) — failures surface in the UI and a retry
+      // is an explicit action.
       for (final e in store.entries) {
         if (e.hasSidecar(_targetLang)) continue;
-        final existing = _byPath[e.path];
-        if (existing == null || existing.state == 'failed') {
-          try {
-            _byPath[e.path] = await engine.enqueue(e.path, target: _targetLang);
-          } catch (_) {
-            // Daemon hiccup — retry next tick.
-          }
+        if (_byPath.containsKey(e.path)) continue;
+        try {
+          _byPath[e.path] = await engine.enqueue(e.path, target: _targetLang);
+        } catch (_) {
+          // Daemon hiccup — retry next tick.
         }
       }
 

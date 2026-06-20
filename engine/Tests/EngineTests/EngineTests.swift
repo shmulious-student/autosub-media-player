@@ -123,6 +123,54 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(cues[1].text, "How are you?")
     }
 
+    // MARK: - BibleCache (series character-map reuse)
+
+    func testBibleCacheDetectsSeriesKeyForEpisodicFiles() {
+        // Same show, different episodes / naming styles → same key.
+        let a = BibleCache.seriesKey(videoPath: "/m/The.Show.S01E02.1080p.mkv")
+        let b = BibleCache.seriesKey(videoPath: "/m/The Show - S01E05.mkv")
+        XCTAssertNotNil(a)
+        XCTAssertEqual(a, b)
+        // Other episodic spellings are recognized too.
+        XCTAssertNotNil(BibleCache.seriesKey(videoPath: "/m/Dexter 1x03.mkv"))
+        XCTAssertNotNil(BibleCache.seriesKey(videoPath: "/m/Friends Season 2 ep.mkv"))
+    }
+
+    func testBibleCacheReturnsNilForStandaloneFilms() {
+        // No season/episode marker → no shared bible (must analyze fresh).
+        XCTAssertNil(BibleCache.seriesKey(videoPath: "/m/Inception.2010.1080p.mkv"))
+        XCTAssertNil(BibleCache.seriesKey(videoPath: "/m/Blade Runner 2049.mkv"))
+    }
+
+    func testBibleCacheSavesAndReusesAcrossEpisodes() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("bible-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let ep1 = dir.appendingPathComponent("The.Show.S01E01.mkv").path
+        let ep2 = dir.appendingPathComponent("The.Show.S01E02.mkv").path
+
+        XCTAssertTrue(BibleCache.load(videoPath: ep1).isEmpty, "nothing cached yet")
+        BibleCache.save(videoPath: ep1, characters: ["David": "m", "Sarah": "f", "X": "u"])
+        // Episode 2 of the same show reuses episode 1's map; "u" was not persisted.
+        let reused = BibleCache.load(videoPath: ep2)
+        XCTAssertEqual(reused["David"], "m")
+        XCTAssertEqual(reused["Sarah"], "f")
+        XCTAssertNil(reused["X"])
+    }
+
+    func testBibleCacheDoesNotShareAcrossStandaloneFilms() {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("bible-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let filmA = dir.appendingPathComponent("Inception.mkv").path
+        let filmB = dir.appendingPathComponent("Interstellar.mkv").path
+        BibleCache.save(videoPath: filmA, characters: ["Cobb": "m"])
+        // A different standalone film in the same folder must NOT inherit the map.
+        XCTAssertTrue(BibleCache.load(videoPath: filmB).isEmpty)
+    }
+
     // MARK: - Daemon JobStore
 
     func testJobStoreStateTransitions() async {

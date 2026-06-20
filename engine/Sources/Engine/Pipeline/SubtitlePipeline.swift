@@ -41,9 +41,20 @@ public actor SubtitlePipeline {
     private var llamaServer: LlamaServer?
     private var chatClient: (any LlamaChat)?
 
+    // The warm WhisperKit ASR (CoreML load is expensive — keep it across jobs).
+    private var asrService: WhisperKitASR?
+
     public init(modelPaths: ModelPaths, whisperModelName: String = "openai_whisper-base") {
         self.modelPaths = modelPaths
         self.whisperModelName = whisperModelName
+    }
+
+    /// The warm WhisperKit instance, created once and reused.
+    private func warmASR() -> WhisperKitASR {
+        if let asrService { return asrService }
+        let s = WhisperKitASR(modelPaths: modelPaths, modelName: whisperModelName)
+        asrService = s
+        return s
     }
 
     /// Lazily start (once) and return the warm DictaLM chat client.
@@ -90,7 +101,7 @@ public actor SubtitlePipeline {
             onProgress(0.02, "decode")
             let decoded = try AudioDecoder().decode(videoPath: videoPath)
             onProgress(0.15, "asr")
-            let asr = try await WhisperKitASR(modelPaths: modelPaths, modelName: whisperModelName)
+            let asr = try await warmASR()
                 .transcribe(samples: decoded.samples, sampleRate: decoded.sampleRate,
                             sourceLanguageHint: nil)
             onProgress(0.45, "segment")
@@ -101,14 +112,23 @@ public actor SubtitlePipeline {
         let chat = try await warmChat()
         let sources = cues.map { $0.text }
 
-        // 2a. Read the WHOLE dialogue → one consistent character/gender map, so the
-        //     translator gives each character the right Hebrew gender everywhere.
+        // 2a. Character/gender map. For an episode of a show whose map we already
+        //     built (episode 1), reuse it and SKIP the whole analysis pass — the
+        //     slowest, bandwidth-bound LLM stage. Otherwise read the WHOLE dialogue
+        //     once to build the map, then cache it for the rest of the season. The
+        //     translator still infers gender inline for any character not in the map.
         onProgress(0.50, "analyze")
-        let characters = (try? await DialogueAnalyzer(chat: chat)
-            .characterGenders(lines: sources)) ?? [:]
+        var characters = BibleCache.load(videoPath: videoPath)
+        let reusedBible = !characters.isEmpty
+        if !reusedBible {
+            characters = (try? await DialogueAnalyzer(chat: chat)
+                .characterGenders(lines: sources)) ?? [:]
+            BibleCache.save(videoPath: videoPath, characters: characters)
+        }
         if !characters.isEmpty {
             let summary = characters.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: ", ")
-            FileHandle.standardError.write(Data("[pipeline] characters: \(summary)\n".utf8))
+            let origin = reusedBible ? "cached bible" : "analyzed"
+            FileHandle.standardError.write(Data("[pipeline] characters (\(origin)): \(summary)\n".utf8))
         }
 
         // 2b. Per-line attribution: WHO speaks/IS addressed on each line (turn-taking

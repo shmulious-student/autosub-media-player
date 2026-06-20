@@ -50,9 +50,16 @@ public protocol ASRService: Sendable {
 }
 
 /// WhisperKit-backed ASR (CoreML/ANE on Apple Silicon).
-public struct WhisperKitASR: ASRService {
+///
+/// An `actor` so the loaded `WhisperKit` pipeline is kept WARM and reused across
+/// jobs. Building `WhisperKit(config)` loads the CoreML model (seconds) — doing it
+/// per call wasted that load on every file. The daemon's SubtitlePipeline holds one
+/// instance for the engine's lifetime. (ASR runs on the ANE; the translation LLM on
+/// the GPU — different silicon, so the two stages can overlap.)
+public actor WhisperKitASR: ASRService {
     private let modelPaths: ModelPaths
     private let modelName: String
+    private var pipe: WhisperKit?   // warm, reused across calls
 
     /// `modelName` is a whisperkit-coreml folder name, e.g. "openai_whisper-base"
     /// or "openai_whisper-large-v3" (production default).
@@ -61,8 +68,9 @@ public struct WhisperKitASR: ASRService {
         self.modelName = modelName
     }
 
-    public func transcribe(samples: [Float], sampleRate: Int,
-                           sourceLanguageHint: String?) async throws -> ASRResult {
+    /// Lazily load (once) and return the warm WhisperKit pipeline.
+    private func warmPipe() async throws -> WhisperKit {
+        if let pipe { return pipe }
         let folder = modelPaths.whisperKit.appendingPathComponent(modelName).path
         let config = WhisperKitConfig(
             model: modelName,
@@ -70,7 +78,14 @@ public struct WhisperKitASR: ASRService {
             modelFolder: folder,
             download: false                    // load locally; never the system volume
         )
-        let pipe = try await WhisperKit(config)
+        let p = try await WhisperKit(config)
+        self.pipe = p
+        return p
+    }
+
+    public func transcribe(samples: [Float], sampleRate: Int,
+                           sourceLanguageHint: String?) async throws -> ASRResult {
+        let pipe = try await warmPipe()
 
         var options = DecodingOptions()
         options.wordTimestamps = true                 // needed by the Segmenter

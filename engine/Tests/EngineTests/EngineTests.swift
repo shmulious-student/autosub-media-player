@@ -12,11 +12,11 @@ final class EngineTests: XCTestCase {
     }
 
     func testBiblePromptInjectsGenderAndGlossary() {
-        let speaker = Character(
+        let speaker = BibleCharacter(
             id: "1", canonicalName: "Sarah", gender: .f,
             nameTranslations: ["he": "שרה"]
         )
-        let addressee = Character(
+        let addressee = BibleCharacter(
             id: "2", canonicalName: "David", gender: .m,
             nameTranslations: ["he": "דוד"]
         )

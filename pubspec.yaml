@@ -59,6 +59,10 @@ dependencies:
   path: ^1.9.0
   http: ^1.2.2
 
+  # Media is opened via the native SecureFiles plugin (macos/Runner/
+  # SecureFilesPlugin.swift) which returns security-scoped bookmarks for
+  # sandbox-correct, persistable access — see lib/platform/secure_files.dart.
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

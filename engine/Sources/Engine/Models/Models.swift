@@ -110,21 +110,21 @@ public struct ContextualParent: Codable, Sendable, Identifiable {
     }
 }
 
-// MARK: - CharacterBible + Character
+// MARK: - CharacterBible + BibleCharacter
 
 public struct CharacterBible: Codable, Sendable, Identifiable {
     public var id: String
     public var contextualParentId: String
     public var version: Int
     public var lockedByUser: Bool
-    public var characters: [Character]
+    public var characters: [BibleCharacter]
 
     public init(
         id: String,
         contextualParentId: String,
         version: Int = 1,
         lockedByUser: Bool = false,
-        characters: [Character] = []
+        characters: [BibleCharacter] = []
     ) {
         self.id = id
         self.contextualParentId = contextualParentId
@@ -140,7 +140,7 @@ public struct CharacterBible: Codable, Sendable, Identifiable {
     }
 }
 
-public struct Character: Codable, Sendable, Identifiable {
+public struct BibleCharacter: Codable, Sendable, Identifiable {
     public var id: String
     public var canonicalName: String
     public var gender: Gender

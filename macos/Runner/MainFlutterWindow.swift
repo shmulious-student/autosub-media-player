@@ -10,6 +10,10 @@ class MainFlutterWindow: NSWindow {
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 
+    // Native security-scoped file access bridge (sandbox-correct file/folder
+    // picking + persistent bookmarks). Channel: `autosub/secure_files`.
+    SecureFilesPlugin.register(with: flutterViewController.engine.binaryMessenger)
+
     super.awakeFromNib()
   }
 }

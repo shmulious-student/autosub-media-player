@@ -112,9 +112,9 @@ func processCommand(_ args: [String]) async {
             for i in cues.indices {
                 let attr = attributions[cues[i].index]
                 let speaker = attr.flatMap { $0.speakerGender == .unknown ? nil
-                    : Engine.Character(id: "spk", canonicalName: "Speaker", gender: $0.speakerGender) }
+                    : Engine.BibleCharacter(id: "spk", canonicalName: "Speaker", gender: $0.speakerGender) }
                 let addressee = attr.flatMap { $0.addresseeGender == .unknown ? nil
-                    : Engine.Character(id: "adr", canonicalName: "Addressee", gender: $0.addresseeGender) }
+                    : Engine.BibleCharacter(id: "adr", canonicalName: "Addressee", gender: $0.addresseeGender) }
                 let ctx = LineContext(sourceText: cues[i].text, speaker: speaker, addressee: addressee)
                 cues[i].text = try await translator.translate(line: ctx, targetLang: target)
             }

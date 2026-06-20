@@ -1,93 +1,196 @@
-// LibraryPage — placeholder grid of scanned titles (SPEC §1 Plex-like hub).
+// LibraryPage — the media hub (SPEC §1). Open any video or add a folder, then
+// play it with its generated Hebrew sidecar if one exists.
 //
-// v0 status: STUB. Pulls the (empty) library index from the EngineClient and
-// renders a grid. Tapping a title would route to the PlayerPage with its video
-// path + produced `.srt` sidecar.
+// File access goes through the system picker (file_selector → powerbox), which
+// grants the sandboxed app access to user-selected files/folders. Picking a
+// FOLDER grants its whole subtree for the session, so sibling `.srt` sidecars are
+// readable — important under the App Sandbox (see lib/platform/secure_files.dart
+// for persisting that access across launches).
+
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
 
-// Prefixed: our `Title` entity collides with Flutter's `Title` widget.
-import '../data/models.dart' as models;
-import '../engine/engine_client.dart';
+import '../platform/secure_files.dart';
 import '../player/player_page.dart';
+import 'library_store.dart';
+
+const List<String> _videoExts = ['mkv', 'mp4', 'mov', 'm4v', 'avi', 'webm', 'ts', 'm2ts'];
+const String _targetLang = 'he';
+const String _engineDir = '/Volumes/EP2TB/autosub-media-player/engine';
 
 class LibraryPage extends StatefulWidget {
-  const LibraryPage({super.key, required this.engine});
+  const LibraryPage({super.key, required this.store});
 
-  final EngineClient engine;
+  final LibraryStore store;
 
   @override
   State<LibraryPage> createState() => _LibraryPageState();
 }
 
 class _LibraryPageState extends State<LibraryPage> {
-  late Future<List<models.Title>> _titles;
-
   @override
   void initState() {
     super.initState();
-    _titles = widget.engine.getLibraryIndex();
+    widget.store.addListener(_onChange);
   }
 
-  void _openTitle(models.Title title) {
+  @override
+  void dispose() {
+    widget.store.removeListener(_onChange);
+    super.dispose();
+  }
+
+  void _onChange() => setState(() {});
+
+  Future<void> _openFile() async {
+    // Native picker → grants sandboxed access + a persistable bookmark.
+    final picked = await const SecureFiles().pickFile();
+    if (picked == null) return;
+    final entry = await widget.store.add(picked.path, bookmark: picked.bookmark);
+    if (mounted) _play(entry);
+  }
+
+  Future<void> _addFolder() async {
+    final picked = await const SecureFiles().pickFolder();
+    if (picked == null) return;
+    final videos = _scan(picked.path);
+    // Every video in the folder shares the folder's bookmark, so resolving it on
+    // the next launch re-grants access to the whole subtree (incl. sidecars).
+    for (final v in videos) {
+      await widget.store.add(v, bookmark: picked.bookmark);
+    }
+    if (mounted && videos.isEmpty) {
+      _snack('No video files found in that folder.');
+    }
+  }
+
+  List<String> _scan(String dir) {
+    final out = <String>[];
+    try {
+      for (final e in Directory(dir).listSync(recursive: true, followLinks: false)) {
+        if (e is File) {
+          final ext = p.extension(e.path).replaceFirst('.', '').toLowerCase();
+          if (_videoExts.contains(ext)) out.add(e.path);
+        }
+      }
+    } catch (_) {
+      // Permission/IO issues → skip silently.
+    }
+    out.sort();
+    return out;
+  }
+
+  void _play(LibraryEntry entry) {
+    final sub = entry.hasSidecar(_targetLang) ? entry.sidecarPath(_targetLang) : null;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => PlayerPage(
-          videoPath: title.path,
-          // TODO(v0): resolve the produced sidecar path for this title from the
-          // engine's SubtitleArtifact index instead of guessing `.srt`.
-          subtitlePath: null,
+          videoPath: entry.path,
+          subtitlePath: sub,
+          title: entry.fileName,
+          autoPlay: true,
         ),
       ),
     );
   }
 
+  void _copyGenerateCommand(LibraryEntry e) {
+    // In-app generation needs the engine daemon (a sandboxed app can't spawn the
+    // engine process). For now, surface the CLI that produces the sidecar.
+    final cmd =
+        "AUTOSUB_MODELS=/Volumes/EP2TB/autosub-models swift run --package-path $_engineDir "
+        "AutoSubEngine process '${e.path}' --target $_targetLang --translator dictalm";
+    Clipboard.setData(ClipboardData(text: cmd));
+    _snack('Generate-subtitles command copied to clipboard.');
+  }
+
+  void _snack(String msg) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+
   @override
   Widget build(BuildContext context) {
+    final entries = widget.store.entries;
     return Scaffold(
-      appBar: AppBar(title: const Text('Library')),
-      body: FutureBuilder<List<models.Title>>(
-        future: _titles,
-        builder: (context, snap) {
-          if (snap.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final titles = snap.data ?? const <models.Title>[];
-          if (titles.isEmpty) {
-            return const Center(
-              child: Text(
-                'Library is empty.\nv0: point the engine at a folder to scan.',
-                textAlign: TextAlign.center,
-              ),
-            );
-          }
-          return GridView.builder(
-            padding: const EdgeInsets.all(12),
-            gridDelegate:
-                const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 220,
-              childAspectRatio: 2 / 3,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-            ),
-            itemCount: titles.length,
-            itemBuilder: (context, i) {
-              final t = titles[i];
-              return InkWell(
-                onTap: () => _openTitle(t),
-                child: Card(
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: Text(t.path.split('/').last),
-                    ),
-                  ),
-                ),
-              );
-            },
-          );
-        },
+      appBar: AppBar(
+        title: const Text('Library'),
+        actions: [
+          IconButton(
+            tooltip: 'Open a video',
+            onPressed: _openFile,
+            icon: const Icon(Icons.video_file),
+          ),
+          IconButton(
+            tooltip: 'Add a folder',
+            onPressed: _addFolder,
+            icon: const Icon(Icons.create_new_folder),
+          ),
+        ],
       ),
+      body: entries.isEmpty ? _empty() : _list(entries),
     );
   }
+
+  Widget _empty() => Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.movie_outlined, size: 64),
+            const SizedBox(height: 12),
+            const Text('Your library is empty.'),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: _openFile,
+              icon: const Icon(Icons.video_file),
+              label: const Text('Open a video'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _addFolder,
+              icon: const Icon(Icons.create_new_folder),
+              label: const Text('Add a folder'),
+            ),
+          ],
+        ),
+      );
+
+  Widget _list(List<LibraryEntry> entries) => ListView.separated(
+        itemCount: entries.length,
+        separatorBuilder: (_, _) => const Divider(height: 1),
+        itemBuilder: (context, i) {
+          final e = entries[i];
+          final hasSub = e.hasSidecar(_targetLang);
+          return ListTile(
+            leading: const Icon(Icons.movie),
+            title: Text(e.fileName),
+            subtitle: Text(
+              hasSub ? 'Hebrew subtitles ready' : 'No subtitles yet',
+              style: TextStyle(
+                color: hasSub ? Colors.green.shade600 : Colors.orange.shade700,
+              ),
+            ),
+            trailing: PopupMenuButton<String>(
+              onSelected: (v) {
+                switch (v) {
+                  case 'play':
+                    _play(e);
+                  case 'gen':
+                    _copyGenerateCommand(e);
+                  case 'remove':
+                    widget.store.remove(e.path);
+                }
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'play', child: Text('Play')),
+                PopupMenuItem(
+                    value: 'gen', child: Text('Copy generate-subtitles command')),
+                PopupMenuItem(value: 'remove', child: Text('Remove')),
+              ],
+            ),
+            onTap: () => _play(e),
+          );
+        },
+      );
 }

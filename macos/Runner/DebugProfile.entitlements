@@ -2,14 +2,21 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Sandbox disabled for DEBUG so the dev build can read media at absolute
-	     paths (e.g. /Volumes/EP2TB/...). Production needs proper access:
-	     security-scoped bookmarks / file picker, or engine-mediated reads. -->
+	<!-- App Sandbox enabled. Production-correct file access is provided via the
+	     system file picker (powerbox) plus security-scoped bookmarks, which the
+	     app persists to regain access across launches (see SecureFilesPlugin). -->
 	<key>com.apple.security.app-sandbox</key>
-	<false/>
+	<true/>
 	<key>com.apple.security.cs.allow-jit</key>
 	<true/>
 	<key>com.apple.security.network.server</key>
+	<true/>
+	<!-- Read/write access to user-selected files (granted via NSOpenPanel). -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<!-- App-scoped security-scoped bookmarks: persist access to picked files
+	     and folders across launches. -->
+	<key>com.apple.security.files.bookmarks.app-scope</key>
 	<true/>
 </dict>
 </plist>

@@ -20,16 +20,16 @@ import Foundation
 /// Resolved per-line context fed to the translator.
 public struct LineContext: Sendable {
     public var sourceText: String
-    public var speaker: Character?
-    public var addressee: Character?
+    public var speaker: BibleCharacter?
+    public var addressee: BibleCharacter?
     /// Characters mentioned/relevant to this line (glossary lock).
-    public var relevantCharacters: [Character]
+    public var relevantCharacters: [BibleCharacter]
 
     public init(
         sourceText: String,
-        speaker: Character? = nil,
-        addressee: Character? = nil,
-        relevantCharacters: [Character] = []
+        speaker: BibleCharacter? = nil,
+        addressee: BibleCharacter? = nil,
+        relevantCharacters: [BibleCharacter] = []
     ) {
         self.sourceText = sourceText
         self.speaker = speaker
@@ -135,9 +135,8 @@ public struct DictaLMTranslator: BibleAwareTranslator {
         // First non-empty line only.
         s = s.split(separator: "\n").map(String.init)
             .first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) ?? s
-        // Strip wrapping quotes. NOTE: `Swift.Character` to dodge the engine's
-        // shadowing `Character` model (tracked: rename it to `BibleCharacter`).
-        let quotes: Set<Swift.Character> = ["\"", "“", "”", "'", "«", "»"]
+        // Strip wrapping quotes.
+        let quotes: Set<Character> = ["\"", "“", "”", "'", "«", "»"]
         if let f = s.first, let l = s.last, quotes.contains(f), quotes.contains(l), s.count > 1 {
             s = String(s.dropFirst().dropLast())
         }

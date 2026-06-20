@@ -148,10 +148,10 @@ class ContextualParent {
 }
 
 // ---------------------------------------------------------------------------
-// CharacterBible + Character
+// CharacterBible + BibleCharacter
 // ---------------------------------------------------------------------------
 
-/// A versioned bag of [Character]s scoped to one [ContextualParent]. SPEC §5.
+/// A versioned bag of [BibleCharacter]s scoped to one [ContextualParent]. SPEC §5.
 ///
 /// Bumping [version] after a user correction is what triggers invalidation +
 /// re-queue of artifacts whose `bibleVersionUsed` is older (SPEC §4).
@@ -160,7 +160,7 @@ class CharacterBible {
   final String contextualParentId;
   final int version;
   final bool lockedByUser;
-  final List<Character> characters;
+  final List<BibleCharacter> characters;
 
   const CharacterBible({
     required this.id,
@@ -184,7 +184,7 @@ class CharacterBible {
         version: (j['version'] as num?)?.toInt() ?? 1,
         lockedByUser: (j['locked_by_user'] as bool?) ?? false,
         characters: ((j['characters'] as List?) ?? const [])
-            .map((e) => Character.fromJson(e as Map<String, dynamic>))
+            .map((e) => BibleCharacter.fromJson(e as Map<String, dynamic>))
             .toList(),
       );
 }
@@ -193,7 +193,7 @@ class CharacterBible {
 ///
 /// `nameTranslations` is a glossary-locked map of lang-code -> translated name
 /// so a character's rendered name never drifts across episodes/films (SPEC §4).
-class Character {
+class BibleCharacter {
   final String id;
   final String canonicalName;
   final Gender gender;
@@ -203,7 +203,7 @@ class Character {
   final double confidence;
   final bool userCorrected;
 
-  const Character({
+  const BibleCharacter({
     required this.id,
     required this.canonicalName,
     this.gender = Gender.unknown,
@@ -225,7 +225,7 @@ class Character {
         'user_corrected': userCorrected,
       };
 
-  factory Character.fromJson(Map<String, dynamic> j) => Character(
+  factory BibleCharacter.fromJson(Map<String, dynamic> j) => BibleCharacter(
         id: j['id'] as String,
         canonicalName: j['canonical_name'] as String,
         gender: _enumFromString(

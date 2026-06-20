@@ -59,8 +59,7 @@ public struct Segmenter: Sendable {
     public init(config: SegmenterConfig = .hebrew) { self.config = config }
 
     /// Sentence-ending punctuation we prefer to break cues on.
-    /// `Swift.Character` to dodge the engine's shadowing `Character` model (task #8).
-    private static let sentenceEnders: Set<Swift.Character> = [".", "!", "?", "…", "。", "؟"]
+    private static let sentenceEnders: Set<Character> = [".", "!", "?", "…", "。", "؟"]
 
     public func segment(_ asr: ASRResult) -> [SubtitleCue] {
         let words = asr.segments.flatMap { $0.words }

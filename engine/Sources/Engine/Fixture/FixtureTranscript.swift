@@ -19,10 +19,10 @@ public struct FixtureTranscript: Codable, Sendable {
 
         /// Convert to the engine model — these are user-locked, fully-confident
         /// hand-authored entries.
-        public func toCharacter() -> Character {
-            Character(id: id, canonicalName: canonicalName, gender: gender,
-                      nameTranslations: nameTranslations, aliases: [],
-                      relationships: [], confidence: 1.0, userCorrected: true)
+        public func toCharacter() -> BibleCharacter {
+            BibleCharacter(id: id, canonicalName: canonicalName, gender: gender,
+                           nameTranslations: nameTranslations, aliases: [],
+                           relationships: [], confidence: 1.0, userCorrected: true)
         }
     }
 
@@ -46,10 +46,10 @@ public struct FixtureTranscript: Codable, Sendable {
     }
 
     /// Engine-model characters.
-    public func engineCharacters() -> [Character] { characters.map { $0.toCharacter() } }
+    public func engineCharacters() -> [BibleCharacter] { characters.map { $0.toCharacter() } }
 
     /// Index characters by id for speaker/addressee resolution.
-    public func charactersById() -> [String: Character] {
+    public func charactersById() -> [String: BibleCharacter] {
         Dictionary(uniqueKeysWithValues: engineCharacters().map { ($0.id, $0) })
     }
 

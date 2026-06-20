@@ -1,35 +1,40 @@
 // AutoSub Media Player — Flutter app entry (SPEC §9).
 //
-// v0: a simple home with navigation to the Library and the Player. The Mac
-// native engine (SwiftPM package under `engine/`) does the heavy AI; this shell
-// talks to it over loopback HTTP via EngineClient.
+// Home is the Library: open any video (or add a folder) and play it with its
+// generated Hebrew sidecar. The Mac native engine (SwiftPM package under
+// `engine/`) does the heavy AI; this shell handles browsing + playback.
 
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 
-import 'engine/engine_client.dart';
 import 'library/library_page.dart';
+import 'library/library_store.dart';
 import 'player/player_page.dart';
 
-/// Dev convenience: when built with `--dart-define=DEV_FIXTURE=true`, launch
-/// straight into the v0 fixture player (auto-play) for RTL-subtitle verification.
+/// Dev convenience: build with `--dart-define=DEV_FIXTURE=true` to launch straight
+/// into the fixture player (requires the sandbox-disabled debug build to read the
+/// absolute fixture path).
 const bool kDevFixture = bool.fromEnvironment('DEV_FIXTURE');
-
-/// The generated v0 fixture + its Hebrew sidecar (scripts/make_test_fixture.py).
 const String kFixtureVideo =
     '/Volumes/EP2TB/autosub-media-player/fixtures/sample.mkv';
 const String kFixtureSub =
     '/Volumes/EP2TB/autosub-media-player/fixtures/sample.he.srt';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Required one-time init for media_kit / libmpv.
   MediaKit.ensureInitialized();
-  runApp(const AutoSubApp());
+
+  final store = LibraryStore();
+  await store.load();
+
+  runApp(AutoSubApp(store: store));
 }
 
 class AutoSubApp extends StatelessWidget {
-  const AutoSubApp({super.key});
+  const AutoSubApp({super.key, required this.store});
+
+  final LibraryStore store;
 
   @override
   Widget build(BuildContext context) {
@@ -43,68 +48,11 @@ class AutoSubApp extends StatelessWidget {
           ? const PlayerPage(
               videoPath: kFixtureVideo,
               subtitlePath: kFixtureSub,
+              title: 'v0 fixture',
               autoPlay: true,
+              loop: true,
             )
-          : const HomePage(),
-    );
-  }
-}
-
-class HomePage extends StatelessWidget {
-  const HomePage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final engine = EngineClient();
-    return Scaffold(
-      appBar: AppBar(title: const Text('AutoSub Media Player')),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text(
-              'v0 vertical slice (Mac)',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 24),
-            FilledButton.icon(
-              icon: const Icon(Icons.video_library),
-              label: const Text('Library'),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => LibraryPage(engine: engine),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.play_circle),
-              label: const Text('Player (no media)'),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const PlayerPage(),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            // v0 dev convenience: open the generated fixture + its Hebrew sidecar
-            // to verify RTL subtitle playback (scripts/make_test_fixture.py).
-            TextButton.icon(
-              icon: const Icon(Icons.science),
-              label: const Text('Play v0 fixture (dev)'),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const PlayerPage(
-                    videoPath: kFixtureVideo,
-                    subtitlePath: kFixtureSub,
-                    autoPlay: true,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+          : LibraryPage(store: store),
     );
   }
 }

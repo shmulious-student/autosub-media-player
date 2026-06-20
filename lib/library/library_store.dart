@@ -126,4 +126,12 @@ class LibraryStore extends ChangeNotifier {
     await _save();
     notifyListeners();
   }
+
+  /// Remove every entry from the library (does not delete media or sidecars).
+  Future<void> clear() async {
+    if (_entries.isEmpty) return;
+    _entries.clear();
+    await _save();
+    notifyListeners();
+  }
 }

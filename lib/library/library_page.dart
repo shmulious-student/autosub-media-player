@@ -142,6 +142,33 @@ class _LibraryPageState extends State<LibraryPage> {
     _snack('Generate-subtitles command copied to clipboard.');
   }
 
+  Future<void> _clearLibrary() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clear library?'),
+        content: const Text(
+          'This removes all titles from the list. Your video files and any '
+          'generated subtitle files are not deleted.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+    if (ok ?? false) {
+      await widget.store.clear();
+      if (mounted) _snack('Library cleared.');
+    }
+  }
+
   void _snack(String msg) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
 
@@ -161,6 +188,11 @@ class _LibraryPageState extends State<LibraryPage> {
             tooltip: 'Add a folder',
             onPressed: _addFolder,
             icon: const Icon(Icons.create_new_folder),
+          ),
+          IconButton(
+            tooltip: 'Clear library',
+            onPressed: widget.store.entries.isEmpty ? null : _clearLibrary,
+            icon: const Icon(Icons.delete_sweep),
           ),
         ],
       ),

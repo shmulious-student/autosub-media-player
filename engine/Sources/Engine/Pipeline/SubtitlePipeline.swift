@@ -76,46 +76,39 @@ public actor SubtitlePipeline {
             return SubtitleJobResult(sidecarPath: existing, cueCount: count)
         }
 
-        // 1. Decode audio straight from the container (no transcode).
-        onProgress(0.02, "decode")
-        let decoded = try AudioDecoder().decode(videoPath: videoPath)
-
-        // 2. Real WhisperKit ASR over the decoded samples.
-        onProgress(0.15, "asr")
-        let asr = try await WhisperKitASR(modelPaths: modelPaths, modelName: whisperModelName)
-            .transcribe(samples: decoded.samples, sampleRate: decoded.sampleRate,
-                        sourceLanguageHint: nil)
-
-        // 3. Segment into cues.
-        onProgress(0.55, "segment")
-        var cues = Segmenter().segment(asr)
-
-        // 4. Warm DictaLM server + per-line speaker/addressee gender attribution.
-        onProgress(0.60, "attribute")
-        let chat = try await warmChat()
-        let attributions = (try? await SpeakerAttributor(chat: chat).attribute(cues: cues)) ?? [:]
-
-        // 5. Bible-aware translation, line by line.
-        onProgress(0.65, "translate")
-        let translator = DictaLMTranslator(modelPaths: modelPaths, chat: chat)
-        let total = max(cues.count, 1)
-        for i in cues.indices {
-            let attr = attributions[cues[i].index]
-            let speaker = attr.flatMap {
-                $0.speakerGender == .unknown ? nil
-                    : BibleCharacter(id: "spk", canonicalName: "Speaker", gender: $0.speakerGender)
-            }
-            let addressee = attr.flatMap {
-                $0.addresseeGender == .unknown ? nil
-                    : BibleCharacter(id: "adr", canonicalName: "Addressee", gender: $0.addresseeGender)
-            }
-            let ctx = LineContext(sourceText: cues[i].text, speaker: speaker, addressee: addressee)
-            cues[i].text = try await translator.translate(line: ctx, targetLang: targetLang)
-            // Spread translation progress across 0.65…0.95.
-            onProgress(0.65 + 0.30 * Double(i + 1) / Double(total), "translate")
+        // 1. Source: prefer an embedded TEXT subtitle track — exact dialogue +
+        //    timing and NO ASR pass (much faster). Fall back to decode + WhisperKit
+        //    ASR only when there's no usable text subtitle.
+        var cues: [SubtitleCue]
+        let extractor = SubtitleExtractor()
+        if let track = try? extractor.bestTextTrack(videoPath: videoPath, targetLang: targetLang),
+           let embedded = try? extractor.extractCues(videoPath: videoPath, trackIndex: track.index),
+           !embedded.isEmpty {
+            onProgress(0.20, "embedded-sub")
+            cues = embedded
+        } else {
+            onProgress(0.02, "decode")
+            let decoded = try AudioDecoder().decode(videoPath: videoPath)
+            onProgress(0.15, "asr")
+            let asr = try await WhisperKitASR(modelPaths: modelPaths, modelName: whisperModelName)
+                .transcribe(samples: decoded.samples, sampleRate: decoded.sampleRate,
+                            sourceLanguageHint: nil)
+            onProgress(0.45, "segment")
+            cues = Segmenter().segment(asr)
         }
 
-        // 6. Assemble + write the RTL .srt sidecar.
+        // 2. Warm DictaLM + BATCH translation (many lines per call; the model
+        //    infers speaker/addressee gender from each chunk's context).
+        onProgress(0.50, "translate")
+        let chat = try await warmChat()
+        let translator = DictaLMTranslator(modelPaths: modelPaths, chat: chat)
+        let translations = try await translator.translateBatch(
+            lines: cues.map { $0.text }, targetLang: targetLang,
+            onProgress: { frac in onProgress(0.50 + 0.45 * frac, "translate") }
+        )
+        for i in cues.indices where i < translations.count { cues[i].text = translations[i] }
+
+        // 3. Assemble + write the RTL .srt sidecar.
         onProgress(0.97, "assemble")
         let path = try SrtAssembler().writeSidecar(cues: cues, lang: targetLang, videoPath: videoPath)
 

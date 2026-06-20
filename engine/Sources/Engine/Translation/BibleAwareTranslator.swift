@@ -142,4 +142,76 @@ public struct DictaLMTranslator: BibleAwareTranslator {
         }
         return s.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+    // MARK: - Batch translation (throughput)
+
+    /// Translate many lines with FAR fewer model round-trips by sending chunks of
+    /// numbered lines per call. The model infers speaker/addressee gender from the
+    /// surrounding lines in the chunk. Falls back to per-line translation for any
+    /// chunk the model misformats, so output length always matches the input.
+    public func translateBatch(
+        lines: [String],
+        targetLang: String,
+        chunkSize: Int = 20,
+        onProgress: @Sendable (Double) -> Void = { _ in }
+    ) async throws -> [String] {
+        guard chat != nil else { return lines.map { "[\(targetLang)] \($0)" } }
+        var out: [String] = []
+        out.reserveCapacity(lines.count)
+        var i = 0
+        while i < lines.count {
+            let chunk = Array(lines[i ..< min(i + chunkSize, lines.count)])
+            out.append(contentsOf: try await translateChunk(chunk, targetLang: targetLang))
+            i += chunkSize
+            onProgress(Double(min(i, lines.count)) / Double(max(lines.count, 1)))
+        }
+        return out
+    }
+
+    private func translateChunk(_ chunk: [String], targetLang: String) async throws -> [String] {
+        guard let chat else { return chunk.map { "[\(targetLang)] \($0)" } }
+        let prompt = buildBatchPrompt(chunk, targetLang: targetLang)
+        let raw = try await chat.complete(system: nil, user: prompt,
+                                          maxTokens: 60 * chunk.count + 80, temperature: 0.2)
+        let parsed = Self.parseNumbered(raw, expected: chunk.count)
+        if parsed.count == chunk.count, !parsed.contains(where: { $0.isEmpty }) {
+            return parsed
+        }
+        // Misformatted → reliable per-line fallback for this chunk only.
+        var result: [String] = []
+        for line in chunk {
+            result.append(try await translate(line: LineContext(sourceText: line),
+                                               targetLang: targetLang))
+        }
+        return result
+    }
+
+    func buildBatchPrompt(_ chunk: [String], targetLang: String) -> String {
+        var parts: [String] = []
+        parts.append("""
+        You are an expert subtitle translator. Translate EACH numbered line into \
+        \(targetLang). Infer each speaker's and addressee's gender from the \
+        surrounding dialogue and apply gendered grammar correctly. Use natural \
+        spoken register. Output EXACTLY one line per input, in the same order, \
+        each formatted as "<number>. <translation>" — no notes, no blank lines.
+        """)
+        parts.append("--- LINES ---")
+        for (i, line) in chunk.enumerated() { parts.append("\(i + 1). \(line)") }
+        parts.append("--- TRANSLATIONS ---")
+        return parts.joined(separator: "\n")
+    }
+
+    /// Parse `<n>. <text>` lines into an ordered array of length `expected`
+    /// (missing entries become empty strings, which trigger the per-line fallback).
+    static func parseNumbered(_ raw: String, expected: Int) -> [String] {
+        var byNum: [Int: String] = [:]
+        for rawLine in raw.split(separator: "\n") {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard let dot = line.firstIndex(of: "."),
+                  let n = Int(line[line.startIndex ..< dot]), n >= 1, n <= expected
+            else { continue }
+            byNum[n] = cleanLine(String(line[line.index(after: dot)...]))
+        }
+        return (1 ... max(expected, 1)).map { byNum[$0] ?? "" }
+    }
 }

@@ -75,6 +75,38 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(parsed[2]?.addresseeGender, .unknown)
     }
 
+    // MARK: - Batch translation + SRT parsing
+
+    func testParseNumberedBatchOutput() {
+        let raw = "1. שלום עולם\n2. מה שלומך\n3. אני בסדר"
+        let out = DictaLMTranslator.parseNumbered(raw, expected: 3)
+        XCTAssertEqual(out, ["שלום עולם", "מה שלומך", "אני בסדר"])
+    }
+
+    func testParseNumberedHandlesMissingLine() {
+        // Line 2 missing → empty placeholder (triggers per-line fallback), order kept.
+        let out = DictaLMTranslator.parseNumbered("1. one\n3. three", expected: 3)
+        XCTAssertEqual(out, ["one", "", "three"])
+    }
+
+    func testParseSRTCuesAndTiming() {
+        let srt = """
+        1
+        00:00:01,000 --> 00:00:03,500
+        <i>Hello there.</i>
+
+        2
+        00:00:04,000 --> 00:00:05,200
+        How are you?
+        """
+        let cues = SubtitleExtractor.parseSRT(srt)
+        XCTAssertEqual(cues.count, 2)
+        XCTAssertEqual(cues[0].startMs, 1000)
+        XCTAssertEqual(cues[0].endMs, 3500)
+        XCTAssertEqual(cues[0].text, "Hello there.") // <i> tags stripped
+        XCTAssertEqual(cues[1].text, "How are you?")
+    }
+
     // MARK: - Daemon JobStore
 
     func testJobStoreStateTransitions() async {

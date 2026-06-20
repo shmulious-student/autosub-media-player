@@ -1,0 +1,121 @@
+// BibleAwareTranslator — context-aware translation with gender/speaker injection.
+//
+// This is the product's core differentiator (SPEC §4). For each subtitle line we
+// inject ONLY the relevant bible context into the LLM prompt:
+//   - the speaker's gender (drives Hebrew verb/adjective conjugation),
+//   - the addressee's gender (second-person forms are gendered in Hebrew),
+//   - glossary-locked character name translations (so names never drift across
+//     episodes/films of a contextual parent),
+//   - relevant relationships.
+//
+// Engine: DictaLM 3.0 (Apache-2.0, Hebrew-native) for the Hebrew default;
+// Qwen3/Qwen-MT for other targets. Runtime: MLX preferred, llama.cpp (GGUF)
+// fallback, behind one inference interface.
+//
+// v0 status: protocol + stub that BUILDS the real prompt (so the prompt shape is
+// reviewable now) and returns a placeholder translation. No LLM dep yet (TODO).
+
+import Foundation
+
+/// Resolved per-line context fed to the translator.
+public struct LineContext: Sendable {
+    public var sourceText: String
+    public var speaker: Character?
+    public var addressee: Character?
+    /// Characters mentioned/relevant to this line (glossary lock).
+    public var relevantCharacters: [Character]
+
+    public init(
+        sourceText: String,
+        speaker: Character? = nil,
+        addressee: Character? = nil,
+        relevantCharacters: [Character] = []
+    ) {
+        self.sourceText = sourceText
+        self.speaker = speaker
+        self.addressee = addressee
+        self.relevantCharacters = relevantCharacters
+    }
+}
+
+public protocol BibleAwareTranslator: Sendable {
+    /// Translate one line into `targetLang` using the injected bible context.
+    func translate(line: LineContext, targetLang: String) async throws -> String
+
+    /// Exposed for review/testing: the exact prompt that would be sent.
+    func buildPrompt(line: LineContext, targetLang: String) -> String
+}
+
+/// DictaLM-backed translator. v0: STUB (builds prompt, returns placeholder).
+public struct DictaLMTranslator: BibleAwareTranslator {
+    private let modelPaths: ModelPaths
+
+    public init(modelPaths: ModelPaths) {
+        self.modelPaths = modelPaths
+    }
+
+    /// PROMPT SHAPE (documented contract):
+    ///
+    ///   System: translation instruction + target language + RTL/gender rules.
+    ///   Context block:
+    ///     SPEAKER: <canonical> (gender=<m|f|nb|unknown>)
+    ///     ADDRESSEE: <canonical> (gender=...)
+    ///     GLOSSARY (locked): <source name> -> <target name>   [per character]
+    ///     RELATIONSHIPS: <...>
+    ///   Task: translate the SOURCE line only, preserving meaning, applying the
+    ///   speaker/addressee gender to all gendered forms, and using the glossary
+    ///   names verbatim.
+    ///   SOURCE: <sourceText>
+    ///
+    /// The model must output ONLY the translated line (no commentary).
+    public func buildPrompt(line: LineContext, targetLang: String) -> String {
+        var parts: [String] = []
+
+        parts.append("""
+        You are an expert subtitle translator. Translate the SOURCE line into \
+        \(targetLang). Output ONLY the translated line, no commentary. Preserve \
+        meaning and natural spoken register. Apply gendered grammar correctly \
+        based on the SPEAKER and ADDRESSEE genders given below. Use the GLOSSARY \
+        name translations verbatim — never invent or vary a character's name.
+        """)
+
+        parts.append("--- CONTEXT ---")
+        if let s = line.speaker {
+            parts.append("SPEAKER: \(s.canonicalName) (gender=\(s.gender.rawValue))")
+        }
+        if let a = line.addressee {
+            parts.append("ADDRESSEE: \(a.canonicalName) (gender=\(a.gender.rawValue))")
+        }
+
+        let glossary = line.relevantCharacters.compactMap { c -> String? in
+            guard let target = c.nameTranslations[targetLang] else { return nil }
+            return "  \(c.canonicalName) -> \(target)"
+        }
+        if !glossary.isEmpty {
+            parts.append("GLOSSARY (locked):")
+            parts.append(contentsOf: glossary)
+        }
+
+        let rels = line.relevantCharacters
+            .flatMap { $0.relationships }
+            .filter { !$0.isEmpty }
+        if !rels.isEmpty {
+            parts.append("RELATIONSHIPS: \(rels.joined(separator: "; "))")
+        }
+
+        parts.append("--- TASK ---")
+        parts.append("SOURCE: \(line.sourceText)")
+        parts.append("TRANSLATION:")
+
+        return parts.joined(separator: "\n")
+    }
+
+    public func translate(line: LineContext, targetLang: String) async throws -> String {
+        let prompt = buildPrompt(line: line, targetLang: targetLang)
+        // TODO(v0): run DictaLM 3.0 (GGUF in modelPaths.llm via llama.cpp, or MLX
+        // export) on `prompt`; strip to the translated line only.
+        _ = prompt
+        _ = modelPaths.llm
+        return "[\(targetLang)] \(line.sourceText)" // placeholder
+    }
+}

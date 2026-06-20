@@ -152,6 +152,8 @@ public struct DictaLMTranslator: BibleAwareTranslator {
     public func translateBatch(
         lines: [String],
         targetLang: String,
+        attributions: [LineAttribution] = [],
+        characters: [String: String] = [:],
         chunkSize: Int = 20,
         onProgress: @Sendable (Double) -> Void = { _ in }
     ) async throws -> [String] {
@@ -160,17 +162,24 @@ public struct DictaLMTranslator: BibleAwareTranslator {
         out.reserveCapacity(lines.count)
         var i = 0
         while i < lines.count {
-            let chunk = Array(lines[i ..< min(i + chunkSize, lines.count)])
-            out.append(contentsOf: try await translateChunk(chunk, targetLang: targetLang))
+            let end = min(i + chunkSize, lines.count)
+            let chunk = Array(lines[i ..< end])
+            let attrs = i < attributions.count
+                ? Array(attributions[i ..< min(end, attributions.count)]) : []
+            out.append(contentsOf: try await translateChunk(
+                chunk, targetLang: targetLang, attributions: attrs, characters: characters))
             i += chunkSize
             onProgress(Double(min(i, lines.count)) / Double(max(lines.count, 1)))
         }
         return out
     }
 
-    private func translateChunk(_ chunk: [String], targetLang: String) async throws -> [String] {
+    private func translateChunk(_ chunk: [String], targetLang: String,
+                                attributions: [LineAttribution],
+                                characters: [String: String]) async throws -> [String] {
         guard let chat else { return chunk.map { "[\(targetLang)] \($0)" } }
-        let prompt = buildBatchPrompt(chunk, targetLang: targetLang)
+        let prompt = buildBatchPrompt(chunk, targetLang: targetLang,
+                                      attributions: attributions, characters: characters)
         let raw = try await chat.complete(system: nil, user: prompt,
                                           maxTokens: 60 * chunk.count + 80, temperature: 0.2)
         let parsed = Self.parseNumbered(raw, expected: chunk.count)
@@ -186,17 +195,30 @@ public struct DictaLMTranslator: BibleAwareTranslator {
         return result
     }
 
-    func buildBatchPrompt(_ chunk: [String], targetLang: String) -> String {
+    func buildBatchPrompt(_ chunk: [String], targetLang: String,
+                          attributions: [LineAttribution] = [],
+                          characters: [String: String] = [:]) -> String {
         var parts: [String] = []
         parts.append("""
         You are an expert subtitle translator. Translate EACH numbered line into \
-        \(targetLang). Infer each speaker's and addressee's gender from the \
-        surrounding dialogue and apply gendered grammar correctly. Use natural \
-        spoken register. Output EXACTLY one line per input, in the same order, \
-        each formatted as "<number>. <translation>" — no notes, no blank lines.
+        \(targetLang). Use natural spoken register. Each line is tagged \
+        [s=<speaker> a=<addressee>] (m=male, f=female, u=unknown) — apply the correct \
+        \(targetLang) gendered forms (verbs, adjectives, 1st- and 2nd-person \
+        pronouns) to match the SPEAKER and ADDRESSEE. When a tag is u, infer gender \
+        from names/pronouns/context. Do NOT output the tags. Output EXACTLY one line \
+        per input, same order, "<number>. <translation>" — no notes, no blank lines.
         """)
+        if !characters.isEmpty {
+            let list = characters.sorted { $0.key < $1.key }
+                .map { "\($0.key)=\($0.value)" }.joined(separator: ", ")
+            parts.append("CHARACTERS (consistent genders): \(list)")
+        }
         parts.append("--- LINES ---")
-        for (i, line) in chunk.enumerated() { parts.append("\(i + 1). \(line)") }
+        for (i, line) in chunk.enumerated() {
+            let s = i < attributions.count ? LineAttribution.marker(attributions[i].speakerGender) : "u"
+            let a = i < attributions.count ? LineAttribution.marker(attributions[i].addresseeGender) : "u"
+            parts.append("\(i + 1). [s=\(s) a=\(a)] \(line)")
+        }
         parts.append("--- TRANSLATIONS ---")
         return parts.joined(separator: "\n")
     }
@@ -210,7 +232,11 @@ public struct DictaLMTranslator: BibleAwareTranslator {
             guard let dot = line.firstIndex(of: "."),
                   let n = Int(line[line.startIndex ..< dot]), n >= 1, n <= expected
             else { continue }
-            byNum[n] = cleanLine(String(line[line.index(after: dot)...]))
+            var text = String(line[line.index(after: dot)...])
+            // Strip an echoed [s=.. a=..] tag if the model repeated it.
+            text = text.replacingOccurrences(of: "\\[s=[^\\]]*\\]", with: "",
+                                             options: .regularExpression)
+            byNum[n] = cleanLine(text)
         }
         return (1 ... max(expected, 1)).map { byNum[$0] ?? "" }
     }

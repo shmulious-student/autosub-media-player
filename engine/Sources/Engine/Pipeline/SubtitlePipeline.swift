@@ -97,14 +97,34 @@ public actor SubtitlePipeline {
             cues = Segmenter().segment(asr)
         }
 
-        // 2. Warm DictaLM + BATCH translation (many lines per call; the model
-        //    infers speaker/addressee gender from each chunk's context).
-        onProgress(0.50, "translate")
+        // 2. Warm DictaLM.
         let chat = try await warmChat()
+        let sources = cues.map { $0.text }
+
+        // 2a. Read the WHOLE dialogue → one consistent character/gender map, so the
+        //     translator gives each character the right Hebrew gender everywhere.
+        onProgress(0.50, "analyze")
+        let characters = (try? await DialogueAnalyzer(chat: chat)
+            .characterGenders(lines: sources)) ?? [:]
+        if !characters.isEmpty {
+            let summary = characters.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: ", ")
+            FileHandle.standardError.write(Data("[pipeline] characters: \(summary)\n".utf8))
+        }
+
+        // 2b. Per-line attribution: WHO speaks/IS addressed on each line (turn-taking
+        //     + the character map) → each line's speaker/addressee gender.
+        onProgress(0.56, "attribute")
+        let attributions = (try? await SpeakerAttributor(chat: chat)
+            .attribute(lines: sources, characters: characters)) ?? []
+
+        // 2c. BATCH translation with per-line gender markers + the character map, so
+        //     name-less lines (e.g. "I am tired.") still get the right gender.
+        onProgress(0.62, "translate")
         let translator = DictaLMTranslator(modelPaths: modelPaths, chat: chat)
         let translations = try await translator.translateBatch(
-            lines: cues.map { $0.text }, targetLang: targetLang,
-            onProgress: { frac in onProgress(0.50 + 0.45 * frac, "translate") }
+            lines: sources, targetLang: targetLang,
+            attributions: attributions, characters: characters,
+            onProgress: { frac in onProgress(0.62 + 0.33 * frac, "translate") }
         )
         for i in cues.indices where i < translations.count { cues[i].text = translations[i] }
 

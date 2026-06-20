@@ -89,6 +89,22 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(out, ["one", "", "three"])
     }
 
+    func testDialogueAnalyzerParsesGenderMap() {
+        let raw = "Here you go: {\"David\":\"m\",\"Sarah\":\"f\",\"Narrator\":\"x\"} done"
+        let map = DialogueAnalyzer.parseMap(raw)
+        XCTAssertEqual(map["David"], "m")
+        XCTAssertEqual(map["Sarah"], "f")
+        XCTAssertEqual(map["Narrator"], "u") // unrecognized value → unknown
+    }
+
+    func testLooksLikeNameFiltersJunk() {
+        XCTAssertTrue(DialogueAnalyzer.looksLikeName("David"))
+        XCTAssertTrue(DialogueAnalyzer.looksLikeName("Marshall Cuso"))
+        XCTAssertFalse(DialogueAnalyzer.looksLikeName("The insurance company"))
+        XCTAssertFalse(DialogueAnalyzer.looksLikeName("They"))
+        XCTAssertFalse(DialogueAnalyzer.looksLikeName("who make tons"))
+    }
+
     func testParseSRTCuesAndTiming() {
         let srt = """
         1

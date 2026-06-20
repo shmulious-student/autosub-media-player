@@ -261,6 +261,122 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(next2?.path, "/movies/B.mkv")
     }
 
+    // MARK: - SQLite persistence (M1)
+
+    func testSqliteStoreRoundTripsEntities() async throws {
+        let store = try makeTempStore()
+
+        try await store.upsertContextualParent(
+            ContextualParent(id: "p1", type: .series, tmdbId: 42, bibleId: "b1"))
+
+        let title = Title(
+            id: "t1", path: "/m/A.mkv", contentHash: "t1", container: "mkv",
+            codec: "h264", durationMs: 1000, contextualParentId: "p1", tmdbId: 42,
+            sourcePreference: .embedded, status: "ready")
+        try await store.upsertTitle(title)
+        // Idempotent upsert: re-inserting the same id doesn't duplicate.
+        try await store.upsertTitle(title)
+        let titles = try await store.titles()
+        XCTAssertEqual(titles.count, 1)
+        XCTAssertEqual(titles.first?.contextualParentId, "p1")
+        XCTAssertEqual(titles.first?.sourcePreference, .embedded)
+        XCTAssertEqual(titles.first?.durationMs, 1000)
+
+        let bible = CharacterBible(
+            id: "b1", contextualParentId: "p1", version: 3, lockedByUser: true,
+            characters: [
+                BibleCharacter(
+                    id: "c1", canonicalName: "Sarah", gender: .f,
+                    nameTranslations: ["he": "שרה"], aliases: ["Sare"],
+                    relationships: ["sister of David"], confidence: 0.9, userCorrected: true)
+            ])
+        try await store.upsertBible(bible)
+        let loaded = try await store.bible(forContextualParentId: "p1")
+        XCTAssertEqual(loaded?.version, 3)
+        XCTAssertTrue(loaded?.lockedByUser ?? false)
+        XCTAssertEqual(loaded?.characters.count, 1)
+        let c = loaded?.characters.first
+        XCTAssertEqual(c?.canonicalName, "Sarah")
+        XCTAssertEqual(c?.gender, .f)
+        XCTAssertEqual(c?.nameTranslations["he"], "שרה")
+        XCTAssertEqual(c?.aliases, ["Sare"])
+        XCTAssertEqual(c?.confidence ?? 0, 0.9, accuracy: 1e-9)
+        XCTAssertTrue(c?.userCorrected ?? false)
+
+        // Re-upserting the bible replaces the character set wholesale.
+        try await store.upsertBible(CharacterBible(
+            id: "b1", contextualParentId: "p1", version: 4,
+            characters: [BibleCharacter(id: "c2", canonicalName: "David", gender: .m)]))
+        let reloaded = try await store.bible(forContextualParentId: "p1")
+        XCTAssertEqual(reloaded?.version, 4)
+        XCTAssertEqual(reloaded?.characters.count, 1)
+        XCTAssertEqual(reloaded?.characters.first?.canonicalName, "David")
+
+        let artifact = SubtitleArtifact(
+            id: "a1", titleId: "t1", lang: "he", format: .srt, source: .embedded,
+            engine: "autosub", model: "dictalm", version: "1",
+            sidecarPath: "/m/A.he.srt", cpsStats: ["mean": 12.5, "max": 18.0],
+            qaFlags: ["fast"], bibleVersionUsed: 3)
+        try await store.upsertArtifact(artifact)
+        let arts = try await store.artifacts(forTitleId: "t1")
+        XCTAssertEqual(arts.count, 1)
+        XCTAssertEqual(arts.first?.source, .embedded)
+        XCTAssertEqual(arts.first?.cpsStats["mean"] ?? 0, 12.5, accuracy: 1e-9)
+        XCTAssertEqual(arts.first?.bibleVersionUsed, 3)
+
+        try await store.upsertJob(ProcessingJob(
+            id: "j1", titleId: "t1", stage: "Translator", state: .running,
+            priority: 5, progress: 0.5, attempts: 1))
+        let pjs = try await store.jobs()
+        XCTAssertEqual(pjs.first?.state, .running)
+        XCTAssertEqual(pjs.first?.priority, 5)
+
+        // SyncRecord has no read accessor in the protocol — just ensure it persists.
+        try await store.upsertSyncRecord(SyncRecord(
+            id: "s1", artifactId: "a1", transport: .lan, state: .pending,
+            checksum: "abc", deviceTargets: ["iphone"]))
+    }
+
+    func testJobStoreReloadResetsRunningToQueued() async throws {
+        let sqlite = try makeTempStore()
+
+        // First process lifetime: enqueue two jobs, start the first.
+        let s1 = JobStore(store: sqlite)
+        let a = await s1.enqueue(path: "/m/A.mkv", target: "he")
+        let b = await s1.enqueue(path: "/m/B.mkv", target: "he")
+        await s1.markRunning(a.id, stage: "asr", progress: 0.3)
+
+        // Simulate crash + restart: a fresh JobStore over the SAME db.
+        let s2 = JobStore(store: sqlite)
+        await s2.reload()
+
+        let all = await s2.all()
+        XCTAssertEqual(all.count, 2, "both jobs survive the restart")
+        let ra = all.first { $0.id == a.id }
+        let rb = all.first { $0.id == b.id }
+        XCTAssertEqual(ra?.state, .queued, "the interrupted running job is reset to queued")
+        XCTAssertEqual(ra?.progress ?? -1, 0.0, accuracy: 1e-9)
+        XCTAssertEqual(rb?.state, .queued)
+
+        // FIFO order (by seq) is preserved across the restart.
+        let next = await s2.nextQueued()
+        XCTAssertEqual(next?.id, a.id)
+
+        // clearQueued deletes rows: a third store sees an empty queue.
+        _ = await s2.clearQueued()
+        let s3 = JobStore(store: sqlite)
+        await s3.reload()
+        let count = await s3.all().count
+        XCTAssertEqual(count, 0, "cleared jobs do not come back after restart")
+    }
+
+    // Helper: a SqliteStore over a throwaway temp DB file.
+    private func makeTempStore() throws -> SqliteStore {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("autosub-test-\(UUID().uuidString).sqlite")
+        return SqliteStore(try AppDatabase.open(at: url))
+    }
+
     // Helper: create a real temp dir so ModelPaths.resolve succeeds.
     private func makeTempModelPaths() throws -> ModelPaths {
         let dir = FileManager.default.temporaryDirectory

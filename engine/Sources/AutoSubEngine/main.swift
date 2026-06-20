@@ -135,7 +135,17 @@ func daemonCommand() {
     // ONE warm pipeline owned for the daemon's whole lifetime — the heavy
     // DictaLM model loads lazily on the first real job and is reused thereafter.
     let pipeline = SubtitlePipeline(modelPaths: modelPaths)
-    let server = DaemonServer(config: DaemonConfig(port: port), pipeline: pipeline)
+    // SQLite source of truth (internal disk). If it can't open, run without
+    // persistence rather than refusing to start — a non-persisted queue still works.
+    let sqlite: SqliteStore?
+    do {
+        sqlite = try SqliteStore.open()
+        err("[AutoSubEngine] store: \((try? AppDatabase.appSupportURL())?.path ?? "?")")
+    } catch {
+        err("[AutoSubEngine] WARNING: SQLite store unavailable (\(error)) — running without persistence")
+        sqlite = nil
+    }
+    let server = DaemonServer(config: DaemonConfig(port: port), pipeline: pipeline, sqlite: sqlite)
     do {
         try server.start()
     } catch {

@@ -27,6 +27,11 @@ let package = Package(
         // Loopback daemon HTTP server — Swifter (MIT, commercial-OK). Bound to
         // 127.0.0.1 only (never a routable interface).
         .package(url: "https://github.com/httpswift/swifter.git", from: "1.5.0"),
+        // SQLite source of truth — GRDB (MIT, commercial-OK). The DB file is small
+        // and lives on the INTERNAL disk (~/Library/Application Support/AutoSub);
+        // only model WEIGHTS go on $AUTOSUB_MODELS (docs/MODELS.md). Pinned to 6.x
+        // for Swift 5.9 / macOS 14 (avoids GRDB 7's stricter concurrency churn).
+        .package(url: "https://github.com/groue/GRDB.swift.git", from: "6.29.0"),
     ],
     targets: [
         .target(
@@ -34,6 +39,7 @@ let package = Package(
             dependencies: [
                 .product(name: "WhisperKit", package: "WhisperKit"),
                 .product(name: "Swifter", package: "swifter"),
+                .product(name: "GRDB", package: "GRDB.swift"),
             ],
             path: "Sources/Engine"
         ),

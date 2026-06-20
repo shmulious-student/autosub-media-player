@@ -13,16 +13,47 @@
 
 import Foundation
 
-/// Result of a successful pipeline run.
+/// Result of a successful pipeline run. Carries enough provenance for the daemon
+/// to persist a `SubtitleArtifact` without re-inspecting the file.
 public struct SubtitleJobResult: Sendable {
     /// Absolute path to the written `.srt` sidecar.
     public let sidecarPath: String
     /// Number of cues written.
     public let cueCount: Int
+    /// Where the dialogue came from (embedded text track vs. ASR).
+    public let source: SubtitleSource
+    /// characters-per-second QA stats (mean/max) for the written cues.
+    public let cpsStats: [String: Double]
+    /// Bible version used to translate, when a bible was applied (M2+); else nil.
+    public let bibleVersionUsed: Int?
 
-    public init(sidecarPath: String, cueCount: Int) {
+    public init(
+        sidecarPath: String,
+        cueCount: Int,
+        source: SubtitleSource = .asr,
+        cpsStats: [String: Double] = [:],
+        bibleVersionUsed: Int? = nil
+    ) {
         self.sidecarPath = sidecarPath
         self.cueCount = cueCount
+        self.source = source
+        self.cpsStats = cpsStats
+        self.bibleVersionUsed = bibleVersionUsed
+    }
+}
+
+/// Identity + bible context the daemon resolves for a title before running the
+/// pipeline. M1: built but unused inside `run`; M2 threads the stored bible
+/// through it to drive glossary-locked, gender-consistent translation.
+public struct TitleContext: Sendable {
+    public let titleId: String
+    public let contextualParentId: String?
+    public var bible: CharacterBible?
+
+    public init(titleId: String, contextualParentId: String? = nil, bible: CharacterBible? = nil) {
+        self.titleId = titleId
+        self.contextualParentId = contextualParentId
+        self.bible = bible
     }
 }
 
@@ -78,6 +109,7 @@ public actor SubtitlePipeline {
     public func run(
         videoPath: String,
         targetLang: String,
+        titleContext: TitleContext? = nil,
         onProgress: @Sendable (Double, String) -> Void = { _, _ in }
     ) async throws -> SubtitleJobResult {
         // Short-circuit: already produced.
@@ -91,12 +123,14 @@ public actor SubtitlePipeline {
         //    timing and NO ASR pass (much faster). Fall back to decode + WhisperKit
         //    ASR only when there's no usable text subtitle.
         var cues: [SubtitleCue]
+        var source: SubtitleSource = .asr
         let extractor = SubtitleExtractor()
         if let track = try? extractor.bestTextTrack(videoPath: videoPath, targetLang: targetLang),
            let embedded = try? extractor.extractCues(videoPath: videoPath, trackIndex: track.index),
            !embedded.isEmpty {
             onProgress(0.20, "embedded-sub")
             cues = embedded
+            source = .embedded
         } else {
             onProgress(0.02, "decode")
             let decoded = try AudioDecoder().decode(videoPath: videoPath)
@@ -153,7 +187,13 @@ public actor SubtitlePipeline {
         let path = try SrtAssembler().writeSidecar(cues: cues, lang: targetLang, videoPath: videoPath)
 
         onProgress(1.0, "done")
-        return SubtitleJobResult(sidecarPath: path, cueCount: cues.count)
+        return SubtitleJobResult(
+            sidecarPath: path,
+            cueCount: cues.count,
+            source: source,
+            cpsStats: SrtAssembler.cpsStats(cues),
+            bibleVersionUsed: titleContext?.bible?.version
+        )
     }
 
     /// Stop the warm llama-server (idempotent). Call on daemon shutdown.

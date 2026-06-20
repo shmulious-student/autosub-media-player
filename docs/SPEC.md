@@ -205,7 +205,8 @@ These remaining areas were decided directly (no further interview) with defaults
 that fit the locked architecture; revisit any time.
 
 - **Branding / identity:** app name **"AutoSub Media Player"** (short name
-  **"AutoSub"**), org **`io.smashgames`** → bundle id **`io.smashgames.autosub_media_player`**.
+  **"AutoSub"**); **private personal project** (not a SmashGames product). Org
+  **`io.shmulious`** → bundle id **`io.shmulious.autosubMediaPlayer`**.
 - **First-run setup (macOS):** a one-time wizard that (1) verifies the external
   model drive is mounted (`$AUTOSUB_MODELS`, default `/Volumes/EP2TB/autosub-models`),
   blocking with clear guidance if absent; (2) lists required models + sizes;

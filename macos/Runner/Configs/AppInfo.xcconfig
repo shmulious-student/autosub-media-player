@@ -8,7 +8,7 @@
 PRODUCT_NAME = autosub_media_player
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = io.smashgames.autosubMediaPlayer
+PRODUCT_BUNDLE_IDENTIFIER = io.shmulious.autosubMediaPlayer
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 io.smashgames. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 io.shmulious. All rights reserved.

@@ -30,7 +30,8 @@ public struct SpeakerAttributor: Sendable {
     /// resolve stay `.unknown`. `characters` (name→m/f/u) gives the model the
     /// script-wide genders so attribution stays consistent.
     public func attribute(lines: [String], characters: [String: String] = [:],
-                          chunkSize: Int = 40) async throws -> [LineAttribution] {
+                          chunkSize: Int = 40,
+                          onProgress: @Sendable (Double) -> Void = { _ in }) async throws -> [LineAttribution] {
         var result = [LineAttribution](repeating: LineAttribution(), count: lines.count)
         var i = 0
         while i < lines.count {
@@ -41,6 +42,7 @@ public struct SpeakerAttributor: Sendable {
                 if global >= 0, global < lines.count { result[global] = attr }
             }
             i += chunkSize
+            onProgress(Double(min(i, lines.count)) / Double(max(lines.count, 1)))
         }
         return result
     }

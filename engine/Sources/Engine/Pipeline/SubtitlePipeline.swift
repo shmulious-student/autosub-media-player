@@ -156,7 +156,9 @@ public actor SubtitlePipeline {
         let reusedBible = !characters.isEmpty
         if !reusedBible {
             characters = (try? await DialogueAnalyzer(chat: chat)
-                .characterGenders(lines: sources)) ?? [:]
+                .characterGenders(lines: sources) { frac in
+                    onProgress(0.50 + 0.06 * frac, "analyze")
+                }) ?? [:]
             BibleCache.save(videoPath: videoPath, characters: characters)
         }
         if !characters.isEmpty {
@@ -169,7 +171,9 @@ public actor SubtitlePipeline {
         //     + the character map) → each line's speaker/addressee gender.
         onProgress(0.56, "attribute")
         let attributions = (try? await SpeakerAttributor(chat: chat)
-            .attribute(lines: sources, characters: characters)) ?? []
+            .attribute(lines: sources, characters: characters) { frac in
+                onProgress(0.56 + 0.06 * frac, "attribute")
+            }) ?? []
 
         // 2c. BATCH translation with per-line gender markers + the character map, so
         //     name-less lines (e.g. "I am tired.") still get the right gender.

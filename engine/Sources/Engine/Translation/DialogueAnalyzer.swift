@@ -15,7 +15,8 @@ public struct DialogueAnalyzer: Sendable {
 
     /// Returns a map of character name → "m" | "f" | "u" (unknown), inferred from
     /// names, pronouns (he/him vs she/her), titles, and surrounding context.
-    public func characterGenders(lines: [String], chunkSize: Int = 60) async throws -> [String: String] {
+    public func characterGenders(lines: [String], chunkSize: Int = 60,
+                                 onProgress: @Sendable (Double) -> Void = { _ in }) async throws -> [String: String] {
         guard !lines.isEmpty else { return [:] }
         var merged: [String: String] = [:]
         var i = 0
@@ -31,6 +32,7 @@ public struct DialogueAnalyzer: Sendable {
                 }
             }
             i += chunkSize
+            onProgress(Double(min(i, lines.count)) / Double(max(lines.count, 1)))
         }
         // Keep only VALIDATED, gendered character names. Drop "unknown" (which is
         // usually noise) and anything that doesn't look like a person's name, so we

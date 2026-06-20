@@ -86,6 +86,17 @@ class EngineClient {
     return EngineJob.fromJson(jsonDecode(r.body) as Map<String, dynamic>);
   }
 
+  /// Clear all queued jobs on the daemon (a running job finishes). Returns the
+  /// number cleared.
+  Future<int> clearJobs() async {
+    final r = await http.delete(_u('/jobs')).timeout(_timeout);
+    if (r.statusCode != 200) {
+      throw Exception('clearJobs failed: ${r.statusCode}');
+    }
+    final body = jsonDecode(r.body) as Map<String, dynamic>;
+    return (body['cleared'] as num?)?.toInt() ?? 0;
+  }
+
   /// All jobs the daemon knows about.
   Future<List<EngineJob>> getJobs() async {
     final r = await http.get(_u('/jobs')).timeout(_timeout);

@@ -110,6 +110,22 @@ public actor JobStore {
 
     public func all() -> [DaemonJob] { jobs }
 
+    /// Drop all still-`queued` jobs (e.g. the user cleared the library). A job
+    /// already `running` is left to finish — cancelling mid-pipeline isn't
+    /// supported yet. Returns how many were removed.
+    @discardableResult
+    public func clearQueued() -> Int {
+        let before = jobs.count
+        jobs.removeAll { $0.state == .queued }
+        reindex()
+        return before - jobs.count
+    }
+
+    private func reindex() {
+        index.removeAll(keepingCapacity: true)
+        for (i, j) in jobs.enumerated() { index[j.id] = i }
+    }
+
     public func job(id: String) -> DaemonJob? {
         guard let i = index[id] else { return nil }
         return jobs[i]
@@ -239,6 +255,12 @@ public final class DaemonServer: @unchecked Sendable {
             }
             let job = Self.blockingAwait { await store.enqueue(path: path, target: target) }
             return .ok(.json(job.jsonObject()))
+        }
+
+        // DELETE /jobs — clear all queued jobs (running one finishes).
+        server.DELETE["/jobs"] = { [store] _ in
+            let n = Self.blockingAwait { await store.clearQueued() }
+            return .ok(.json(["cleared": n]))
         }
     }
 

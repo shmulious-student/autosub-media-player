@@ -44,6 +44,18 @@ class ProcessingManager extends ChangeNotifier {
 
   EngineJob? jobFor(String path) => _byPath[path];
 
+  /// Clear local job tracking and the daemon's queued jobs (used when the
+  /// library is cleared). A job already running on the daemon finishes.
+  Future<void> clearQueue() async {
+    _byPath.clear();
+    notifyListeners();
+    try {
+      await engine.clearJobs();
+    } catch (_) {
+      // Daemon offline or hiccup — local state is already cleared.
+    }
+  }
+
   Future<void> _tick() async {
     if (_ticking) return;
     _ticking = true;

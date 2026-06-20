@@ -137,6 +137,22 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(b.state, .queued)
     }
 
+    func testClearQueuedRemovesOnlyQueuedJobs() async {
+        let store = JobStore()
+        let a = await store.enqueue(path: "/movies/A.mkv", target: "he")
+        _ = await store.enqueue(path: "/movies/B.mkv", target: "he")
+        _ = await store.enqueue(path: "/movies/C.mkv", target: "he")
+        // A is running; B and C are still queued.
+        await store.markRunning(a.id, stage: "asr", progress: 0.1)
+
+        let cleared = await store.clearQueued()
+        XCTAssertEqual(cleared, 2, "both queued jobs removed")
+
+        let all = await store.all()
+        XCTAssertEqual(all.count, 1, "the running job is retained")
+        XCTAssertEqual(all.first?.id, a.id)
+    }
+
     func testJobStoreNextQueuedIsFIFO() async {
         let store = JobStore()
         let first = await store.enqueue(path: "/movies/A.mkv", target: "he")

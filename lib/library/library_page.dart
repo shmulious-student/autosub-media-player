@@ -165,7 +165,8 @@ class _LibraryPageState extends State<LibraryPage> {
     );
     if (ok ?? false) {
       await widget.store.clear();
-      if (mounted) _snack('Library cleared.');
+      await widget.manager.clearQueue();
+      if (mounted) _snack('Library and translation queue cleared.');
     }
   }
 

@@ -9,6 +9,7 @@ import 'package:media_kit/media_kit.dart';
 
 import 'library/library_page.dart';
 import 'library/library_store.dart';
+import 'library/processing_manager.dart';
 import 'player/player_page.dart';
 
 /// Dev convenience: build with `--dart-define=DEV_FIXTURE=true` to launch straight
@@ -28,13 +29,17 @@ Future<void> main() async {
   final store = LibraryStore();
   await store.load();
 
-  runApp(AutoSubApp(store: store));
+  // Pre-process the library in the background (translate un-subtitled titles).
+  final manager = ProcessingManager(store)..start();
+
+  runApp(AutoSubApp(store: store, manager: manager));
 }
 
 class AutoSubApp extends StatelessWidget {
-  const AutoSubApp({super.key, required this.store});
+  const AutoSubApp({super.key, required this.store, required this.manager});
 
   final LibraryStore store;
+  final ProcessingManager manager;
 
   @override
   Widget build(BuildContext context) {
@@ -52,7 +57,7 @@ class AutoSubApp extends StatelessWidget {
               autoPlay: true,
               loop: true,
             )
-          : LibraryPage(store: store),
+          : LibraryPage(store: store, manager: manager),
     );
   }
 }

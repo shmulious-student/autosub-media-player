@@ -5,7 +5,7 @@
 //       Run the v0 vertical slice on one file: decode audio → (ASR or fixture
 //       transcript) → segment → bible-aware translate → write an RTL .srt sidecar.
 //   daemon  (default)
-//       Resolve model storage and start the loopback sidecar daemon (stub).
+//       Resolve model storage and start the loopback HTTP job server (blocks).
 //
 // Every path first resolves $AUTOSUB_MODELS so an unmounted external drive
 // surfaces immediately (docs/MODELS.md).
@@ -75,11 +75,10 @@ func processCommand(_ args: [String]) async {
     }
 
     // 4. Build cues + translate (through the real BibleAwareTranslator interface).
-    var cues: [SubtitleCue]
     do {
         if let transcriptPath {
             let fx = try FixtureTranscript.load(path: transcriptPath)
-            cues = fx.sourceCues()
+            var cues = fx.sourceCues()
             let translator: any BibleAwareTranslator = useDictaLM
                 ? DictaLMTranslator(modelPaths: modelPaths, chat: chatClient)
                 : FixtureTranslator(transcript: fx, modelPaths: modelPaths)
@@ -91,52 +90,32 @@ func processCommand(_ args: [String]) async {
                 cues[i].text = try await translator.translate(line: ctx, targetLang: target)
                 err("[translate] \(line.text)  →  \(cues[i].text)")
             }
+            // 5. Assemble + write the RTL .srt sidecar (fixture path).
+            let assembler = SrtAssembler()
+            let path = try assembler.writeSidecar(cues: cues, lang: target, videoPath: videoPath)
+            let stats = SrtAssembler.cpsStats(cues)
+            err("[process] wrote \(cues.count) cues → \(path)")
+            err("[process] CPS  mean=\(String(format: "%.1f", stats["mean"] ?? 0)) max=\(String(format: "%.1f", stats["max"] ?? 0))")
+            err("\n----- \(URL(fileURLWithPath: path).lastPathComponent) -----")
+            print(assembler.render(cues: cues, lang: target))
+            await server?.stop()
         } else {
-            // Production path: real WhisperKit ASR over the decoded samples.
-            let asr = try await WhisperKitASR(modelPaths: modelPaths)
-                .transcribe(samples: decoded.samples, sampleRate: decoded.sampleRate,
-                            sourceLanguageHint: nil)
-            err("[process] ASR: \(asr.segments.count) segments, lang=\(asr.language)")
-            cues = Segmenter().segment(asr)
-
-            // No character bible on the prod path → infer per-line speaker/
-            // addressee gender from dialogue context so translation is gendered.
-            var attributions: [Int: LineAttribution] = [:]
-            if let chatClient {
-                attributions = (try? await SpeakerAttributor(chat: chatClient)
-                    .attribute(cues: cues)) ?? [:]
-                err("[process] speaker attribution: \(attributions.count)/\(cues.count) lines")
+            // Production path: drive the SAME SubtitlePipeline the daemon uses.
+            await server?.stop() // the pipeline owns its own warm llama-server
+            let pipeline = SubtitlePipeline(modelPaths: modelPaths)
+            let result = try await pipeline.run(videoPath: videoPath, targetLang: target) { p, stage in
+                err("[process] \(stage) \(String(format: "%.0f%%", p * 100))")
             }
-
-            let translator = DictaLMTranslator(modelPaths: modelPaths, chat: chatClient)
-            for i in cues.indices {
-                let attr = attributions[cues[i].index]
-                let speaker = attr.flatMap { $0.speakerGender == .unknown ? nil
-                    : Engine.BibleCharacter(id: "spk", canonicalName: "Speaker", gender: $0.speakerGender) }
-                let addressee = attr.flatMap { $0.addresseeGender == .unknown ? nil
-                    : Engine.BibleCharacter(id: "adr", canonicalName: "Addressee", gender: $0.addresseeGender) }
-                let ctx = LineContext(sourceText: cues[i].text, speaker: speaker, addressee: addressee)
-                cues[i].text = try await translator.translate(line: ctx, targetLang: target)
+            await pipeline.shutdown()
+            err("[process] wrote \(result.cueCount) cues → \(result.sidecarPath)")
+            if let text = try? String(contentsOfFile: result.sidecarPath, encoding: .utf8) {
+                err("\n----- \(URL(fileURLWithPath: result.sidecarPath).lastPathComponent) -----")
+                print(text)
             }
         }
     } catch {
-        err("[process] translate failed: \(error)")
+        err("[process] failed: \(error)")
         await server?.stop()
-        exit(EXIT_FAILURE)
-    }
-    await server?.stop()
-
-    // 4. Assemble + write the RTL .srt sidecar.
-    do {
-        let assembler = SrtAssembler()
-        let path = try assembler.writeSidecar(cues: cues, lang: target, videoPath: videoPath)
-        let stats = SrtAssembler.cpsStats(cues)
-        err("[process] wrote \(cues.count) cues → \(path)")
-        err("[process] CPS  mean=\(String(format: "%.1f", stats["mean"] ?? 0)) max=\(String(format: "%.1f", stats["max"] ?? 0))")
-        err("\n----- \(URL(fileURLWithPath: path).lastPathComponent) -----")
-        print(assembler.render(cues: cues, lang: target))
-    } catch {
-        err("[process] assemble failed: \(error)")
         exit(EXIT_FAILURE)
     }
 }
@@ -146,21 +125,27 @@ func optionValue(_ args: [String], _ name: String) -> String? {
     return args[i + 1]
 }
 
-// MARK: - daemon (stub)
+// MARK: - daemon
 
-func daemonCommand() async {
+func daemonCommand() {
     let modelPaths = resolveModels()
-    let queue = JobQueue()
-    let orchestrator = PipelineOrchestrator(queue: queue, modelPaths: modelPaths)
-    _ = InMemoryStore()
-    let server = DaemonServer(config: DaemonConfig(), orchestrator: orchestrator, queue: queue)
+    // Default 8770 (8765 commonly collides with Unity's Mono-HTTPAPI on dev
+    // machines); $AUTOSUB_DAEMON_PORT overrides it. Host stays loopback-only.
+    let port = ProcessInfo.processInfo.environment["AUTOSUB_DAEMON_PORT"].flatMap(Int.init) ?? 8770
+    // ONE warm pipeline owned for the daemon's whole lifetime — the heavy
+    // DictaLM model loads lazily on the first real job and is reused thereafter.
+    let pipeline = SubtitlePipeline(modelPaths: modelPaths)
+    let server = DaemonServer(config: DaemonConfig(port: port), pipeline: pipeline)
     do {
-        try await server.start()
+        try server.start()
     } catch {
         err("[AutoSubEngine] daemon failed: \(error)")
         exit(EXIT_FAILURE)
     }
-    err("[AutoSubEngine] STUB daemon up. (No socket bound yet — see DaemonServer TODO.)")
+    err("[AutoSubEngine] daemon up on 127.0.0.1:\(port) — POST /jobs to enqueue.")
+    // Keep the process alive forever (Swifter serves on its own GCD queue and the
+    // worker runs on a detached Task).
+    dispatchMain()
 }
 
 // MARK: - dispatch
@@ -170,5 +155,5 @@ switch argv.first {
 case "process":
     await processCommand(Array(argv.dropFirst()))
 default:
-    await daemonCommand()
+    daemonCommand()
 }

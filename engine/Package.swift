@@ -24,14 +24,16 @@ let package = Package(
         // ASR — WhisperKit (MIT, ANE-accelerated). Models live on the external
         // drive ($AUTOSUB_MODELS/whisperkit), never bundled (docs/MODELS.md).
         .package(url: "https://github.com/argmaxinc/WhisperKit.git", from: "0.9.0"),
-        // TODO(v0): add a lightweight HTTP server for the loopback daemon, e.g.
-        //   .package(url: "https://github.com/httpswift/swifter.git", from: "1.5.0")
+        // Loopback daemon HTTP server — Swifter (MIT, commercial-OK). Bound to
+        // 127.0.0.1 only (never a routable interface).
+        .package(url: "https://github.com/httpswift/swifter.git", from: "1.5.0"),
     ],
     targets: [
         .target(
             name: "Engine",
             dependencies: [
                 .product(name: "WhisperKit", package: "WhisperKit"),
+                .product(name: "Swifter", package: "swifter"),
             ],
             path: "Sources/Engine"
         ),

@@ -11,6 +11,9 @@
 	<true/>
 	<key>com.apple.security.network.server</key>
 	<true/>
+	<!-- Outgoing loopback to the engine daemon (127.0.0.1:8765). -->
+	<key>com.apple.security.network.client</key>
+	<true/>
 	<!-- Read/write access to user-selected files (granted via NSOpenPanel). -->
 	<key>com.apple.security.files.user-selected.read-write</key>
 	<true/>

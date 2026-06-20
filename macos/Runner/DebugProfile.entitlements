@@ -2,24 +2,16 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- App Sandbox enabled. Production-correct file access is provided via the
-	     system file picker (powerbox) plus security-scoped bookmarks, which the
-	     app persists to regain access across launches (see SecureFilesPlugin). -->
+	<!-- App Sandbox DISABLED. As a Developer-ID (non-App-Store) app, AutoSub
+	     launches the engine as a child process (it spawns ffmpeg + the local LLM
+	     server) and reads the user's media. macOS attributes that file access to
+	     AutoSub, so the standard "would like to access your Downloads folder"
+	     prompt covers the engine too — no sandbox bookmarks / Full Disk Access
+	     needed. (App Store eligibility would require re-sandboxing + in-process
+	     libav; deferred.) -->
 	<key>com.apple.security.app-sandbox</key>
-	<true/>
+	<false/>
 	<key>com.apple.security.cs.allow-jit</key>
-	<true/>
-	<key>com.apple.security.network.server</key>
-	<true/>
-	<!-- Outgoing loopback to the engine daemon (127.0.0.1:8765). -->
-	<key>com.apple.security.network.client</key>
-	<true/>
-	<!-- Read/write access to user-selected files (granted via NSOpenPanel). -->
-	<key>com.apple.security.files.user-selected.read-write</key>
-	<true/>
-	<!-- App-scoped security-scoped bookmarks: persist access to picked files
-	     and folders across launches. -->
-	<key>com.apple.security.files.bookmarks.app-scope</key>
 	<true/>
 </dict>
 </plist>

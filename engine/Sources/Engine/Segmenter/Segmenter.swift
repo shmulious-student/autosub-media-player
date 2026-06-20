@@ -58,14 +58,18 @@ public struct Segmenter: Sendable {
     private let config: SegmenterConfig
     public init(config: SegmenterConfig = .hebrew) { self.config = config }
 
+    /// Sentence-ending punctuation we prefer to break cues on.
+    /// `Swift.Character` to dodge the engine's shadowing `Character` model (task #8).
+    private static let sentenceEnders: Set<Swift.Character> = [".", "!", "?", "…", "。", "؟"]
+
     public func segment(_ asr: ASRResult) -> [SubtitleCue] {
         let words = asr.segments.flatMap { $0.words }
         // No word-level timing (e.g. some ASR fallbacks) → one cue per segment.
         guard !words.isEmpty else {
-            return asr.segments.enumerated().map { i, s in
-                clampDuration(SubtitleCue(index: i + 1, startMs: s.startMs,
-                                          endMs: s.endMs, text: s.text))
+            let cues = asr.segments.enumerated().map { i, s in
+                SubtitleCue(index: i + 1, startMs: s.startMs, endMs: s.endMs, text: s.text)
             }
+            return normalize(cues)
         }
 
         var cues: [SubtitleCue] = []
@@ -75,11 +79,10 @@ public struct Segmenter: Sendable {
             guard !buf.isEmpty else { return }
             let text = buf.map { $0.text }.joined(separator: " ")
                 .trimmingCharacters(in: .whitespaces)
-            let cue = SubtitleCue(index: cues.count + 1,
-                                  startMs: buf.first!.startMs,
-                                  endMs: buf.last!.endMs,
-                                  text: text)
-            cues.append(clampDuration(cue))
+            cues.append(SubtitleCue(index: cues.count + 1,
+                                    startMs: buf.first!.startMs,
+                                    endMs: buf.last!.endMs,
+                                    text: text))
             buf.removeAll(keepingCapacity: true)
         }
 
@@ -88,6 +91,7 @@ public struct Segmenter: Sendable {
                 let gap = word.startMs - last.endMs
                 let projected = (buf.map { $0.text }.joined(separator: " ") + " " + word.text).count
                 let projectedDur = word.endMs - buf.first!.startMs
+                // Break BEFORE this word on a pause or when limits would be exceeded.
                 if gap >= config.pauseBreakMs
                     || projected > config.maxChars
                     || projectedDur > config.maxDurationMs {
@@ -95,26 +99,35 @@ public struct Segmenter: Sendable {
                 }
             }
             buf.append(word)
+            // Break AFTER a word that ends a sentence, so cues align to sentences
+            // instead of splitting mid-phrase.
+            if let lastChar = word.text.trimmingCharacters(in: .whitespaces).last,
+               Self.sentenceEnders.contains(lastChar) {
+                flush()
+            }
         }
         flush()
-        return cues
+        return normalize(cues)
     }
 
-    /// Enforce min/max duration and nudge toward the CPS ceiling where there's room.
-    private func clampDuration(_ cue: SubtitleCue) -> SubtitleCue {
-        var c = cue
-        if c.durationMs < config.minDurationMs {
-            c.endMs = c.startMs + config.minDurationMs
+    /// Enforce min/max duration + CPS headroom, and guarantee cues never overlap
+    /// (a later cue's start caps the previous cue's end). Re-indexes 1..n.
+    private func normalize(_ input: [SubtitleCue]) -> [SubtitleCue] {
+        var cues = input
+        for i in cues.indices {
+            var c = cues[i]
+            // Target end: at least min duration, and enough time to read (CPS).
+            let needForCPS = Int(Double(c.text.count) / config.maxCPS * 1000.0)
+            var end = max(c.endMs, c.startMs + max(config.minDurationMs, needForCPS))
+            end = min(end, c.startMs + config.maxDurationMs)
+            // Never run into the next cue (leave a tiny gap).
+            if i + 1 < cues.count {
+                end = min(end, cues[i + 1].startMs - 1)
+            }
+            c.endMs = max(c.startMs + 1, end)
+            c.index = i + 1
+            cues[i] = c
         }
-        // If too fast to read, extend up to maxDuration (best-effort; the next
-        // cue's start would cap this in a fuller implementation).
-        let neededMs = Int(Double(c.text.count) / config.maxCPS * 1000.0)
-        if neededMs > c.durationMs {
-            c.endMs = c.startMs + min(neededMs, config.maxDurationMs)
-        }
-        if c.durationMs > config.maxDurationMs {
-            c.endMs = c.startMs + config.maxDurationMs
-        }
-        return c
+        return cues
     }
 }

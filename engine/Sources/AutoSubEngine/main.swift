@@ -98,9 +98,24 @@ func processCommand(_ args: [String]) async {
                             sourceLanguageHint: nil)
             err("[process] ASR: \(asr.segments.count) segments, lang=\(asr.language)")
             cues = Segmenter().segment(asr)
+
+            // No character bible on the prod path → infer per-line speaker/
+            // addressee gender from dialogue context so translation is gendered.
+            var attributions: [Int: LineAttribution] = [:]
+            if let chatClient {
+                attributions = (try? await SpeakerAttributor(chat: chatClient)
+                    .attribute(cues: cues)) ?? [:]
+                err("[process] speaker attribution: \(attributions.count)/\(cues.count) lines")
+            }
+
             let translator = DictaLMTranslator(modelPaths: modelPaths, chat: chatClient)
             for i in cues.indices {
-                let ctx = LineContext(sourceText: cues[i].text)
+                let attr = attributions[cues[i].index]
+                let speaker = attr.flatMap { $0.speakerGender == .unknown ? nil
+                    : Engine.Character(id: "spk", canonicalName: "Speaker", gender: $0.speakerGender) }
+                let addressee = attr.flatMap { $0.addresseeGender == .unknown ? nil
+                    : Engine.Character(id: "adr", canonicalName: "Addressee", gender: $0.addresseeGender) }
+                let ctx = LineContext(sourceText: cues[i].text, speaker: speaker, addressee: addressee)
                 cues[i].text = try await translator.translate(line: ctx, targetLang: target)
             }
         }

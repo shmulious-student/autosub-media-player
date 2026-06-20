@@ -72,6 +72,10 @@ so playback is instant.
   same daemon hosts the Bonjour LAN server. Player uses libmpv in-process.
 - **Store:** **SQLite** on the Mac = source of truth; a derived read-only library
   index is what syncs to iOS.
+- **Model storage:** all heavyweight weights + download caches live on the
+  **external drive** at `/Volumes/EP2TB/autosub-models/` — never the internal disk
+  or `~`. The engine resolves paths from `$AUTOSUB_MODELS` and fails loudly if the
+  drive is unmounted. See [MODELS.md](MODELS.md).
 
 ---
 

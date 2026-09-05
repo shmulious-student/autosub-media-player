@@ -112,7 +112,7 @@ public struct JobRating: Codable, Sendable {
 
 public struct DaemonJob: Codable, Sendable, Identifiable {
     public enum State: String, Codable, Sendable {
-        case queued, running, done, failed
+        case queued, running, paused, done, failed
     }
 
     public var id: String
@@ -400,22 +400,29 @@ public actor JobStore {
         jobs.first { $0.state == .running && !excludingPaths.contains($0.path) }
     }
 
-    /// Re-queue a job that was preempted mid-run (state → queued, progress reset).
-    /// Re-running is cheap: the pipeline short-circuits on an existing sidecar.
+    /// Re-queue a job that was preempted mid-run (state → queued, progress reset)
+    /// or resume a paused job.
     @discardableResult
     public func markQueued(_ id: String) async -> DaemonJob? {
+        var wasPaused = false
         let j = mutate(id) {
-            guard $0.state == .running else { return }
+            guard $0.state == .running || $0.state == .paused else { return }
+            wasPaused = ($0.state == .paused)
             $0.state = .queued
-            $0.stage = nil
-            $0.progress = 0
-            $0.startedAtUtcMs = nil
-            $0.endedAtUtcMs = nil
-            $0.rating = nil
+            $0.error = nil
+            if !wasPaused {
+                $0.stage = nil
+                $0.progress = 0
+                $0.startedAtUtcMs = nil
+                $0.endedAtUtcMs = nil
+                $0.rating = nil
+            }
         }
         if let j {
-            meta[id]?.lastPersistedProgress = 0
-            meta[id]?.lastStage = nil
+            if !wasPaused {
+                meta[id]?.lastPersistedProgress = 0
+                meta[id]?.lastStage = nil
+            }
             await persist(j)
         }
         return j
@@ -515,6 +522,55 @@ public actor JobStore {
     }
 
     @discardableResult
+    public func markPaused(_ id: String) async -> DaemonJob? {
+        let j = mutate(id) {
+            $0.state = .paused
+            if $0.stage == nil { $0.stage = "paused" }
+        }
+        if let j { await persist(j) }
+        return j
+    }
+
+    @discardableResult
+    public func markCancelled(_ id: String) async -> DaemonJob? {
+        let j = mutate(id) {
+            $0.state = .failed
+            $0.error = "Cancelled by user"
+            $0.endedAtUtcMs = DaemonJob.nowUtcMs()
+            $0.rating = .failed(error: "Cancelled by user")
+        }
+        if let j { await persist(j) }
+        return j
+    }
+
+    @discardableResult
+    public func cancelJob(id: String) async -> DaemonJob? {
+        guard index[id] != nil else { return nil }
+        return await markCancelled(id)
+    }
+
+    @discardableResult
+    public func redoJob(id: String) async -> DaemonJob? {
+        guard index[id] != nil else { return nil }
+        let j = mutate(id) {
+            $0.state = .queued
+            $0.stage = nil
+            $0.progress = 0.0
+            $0.startedAtUtcMs = nil
+            $0.endedAtUtcMs = nil
+            $0.rating = nil
+            $0.error = nil
+            $0.force = true
+        }
+        if let j {
+            meta[id]?.lastPersistedProgress = 0.0
+            meta[id]?.lastStage = nil
+            await persist(j)
+        }
+        return j
+    }
+
+    @discardableResult
     private func mutate(_ id: String, _ body: (inout DaemonJob) -> Void) -> DaemonJob? {
         guard let i = index[id] else { return nil }
         body(&jobs[i])
@@ -561,13 +617,19 @@ public final class DaemonServer: @unchecked Sendable {
     private let pipeline: SubtitlePipeline
     private let server = HttpServer()
 
-    // Preemption: track the running job + a cancel hook so a "Translate now"
-    // request can stop it. Guarded by a lock (the worker runs on a detached task,
+    // Preemption / Pause / Cancel: track the running job + a cancel hook so external
+    // requests can stop it. Guarded by a lock (the worker runs on a detached task,
     // the route handlers on Swifter's threads).
+    public enum StopReason {
+        case preempt
+        case pause
+        case cancel
+    }
+
     private let runLock = NSLock()
     private var currentJobId: String?
     private var cancelCurrent: (() -> Void)?
-    private var preemptRequestedFor: String?
+    private var pendingStopReasons: [String: StopReason] = [:]
 
     private func setCurrent(_ id: String, cancel: @escaping () -> Void) {
         runLock.lock(); currentJobId = id; cancelCurrent = cancel; runLock.unlock()
@@ -577,22 +639,26 @@ public final class DaemonServer: @unchecked Sendable {
         runLock.lock(); currentJobId = nil; cancelCurrent = nil; runLock.unlock()
     }
 
-    /// Cancel the running job iff it matches [id]; remember that we asked, so the
-    /// worker re-queues (not fails) it.
-    private func preempt(id: String) {
+    /// Request a stop for the running job with the given reason.
+    private func requestStop(id: String, reason: StopReason) {
         runLock.lock()
         let match = currentJobId == id
         let cancel = cancelCurrent
-        if match { preemptRequestedFor = id }
+        if match { pendingStopReasons[id] = reason }
         runLock.unlock()
         if match { cancel?() }
     }
 
-    /// Did we deliberately preempt [id]? (Consumes the flag.)
-    private func wasPreempted(_ id: String) -> Bool {
+    /// Consume the stop reason for [id] if one was registered.
+    private func takeStopReason(_ id: String) -> StopReason? {
         runLock.lock(); defer { runLock.unlock() }
-        if preemptRequestedFor == id { preemptRequestedFor = nil; return true }
-        return false
+        return pendingStopReasons.removeValue(forKey: id)
+    }
+
+    /// Cancel the running job iff it matches [id]; remember that we asked, so the
+    /// worker re-queues (not fails) it.
+    private func preempt(id: String) {
+        requestStop(id: id, reason: .preempt)
     }
 
     public init(config: DaemonConfig, pipeline: SubtitlePipeline, sqlite: SqliteStore? = nil) {
@@ -703,6 +769,62 @@ public final class DaemonServer: @unchecked Sendable {
                 return Self.jsonError(404, "history item not found")
             }
             return .ok(.json(["deleted": true]))
+        }
+
+        // POST /jobs/{id}/cancel
+        server.POST["/jobs/:id/cancel"] = { [store, weak self] req in
+            guard let id = req.params[":id"] else {
+                return Self.jsonError(404, "not found")
+            }
+            self?.requestStop(id: id, reason: .cancel)
+            let job = Self.blockingAwait { await store.cancelJob(id: id) }
+            guard let job else {
+                return Self.jsonError(404, "job not found")
+            }
+            return .ok(.json(job.jsonObject()))
+        }
+
+        // POST /jobs/{id}/pause
+        server.POST["/jobs/:id/pause"] = { [store, weak self] req in
+            guard let id = req.params[":id"] else {
+                return Self.jsonError(404, "not found")
+            }
+            self?.requestStop(id: id, reason: .pause)
+            let job = Self.blockingAwait { await store.markPaused(id) }
+            guard let job else {
+                return Self.jsonError(404, "job not found")
+            }
+            return .ok(.json(job.jsonObject()))
+        }
+
+        // POST /jobs/{id}/resume
+        server.POST["/jobs/:id/resume"] = { [store] req in
+            guard let id = req.params[":id"] else {
+                return Self.jsonError(404, "not found")
+            }
+            let job = Self.blockingAwait { await store.markQueued(id) }
+            guard let job else {
+                return Self.jsonError(404, "job not found")
+            }
+            return .ok(.json(job.jsonObject()))
+        }
+
+        // POST /jobs/{id}/redo
+        server.POST["/jobs/:id/redo"] = { [store, weak self] req in
+            guard let id = req.params[":id"] else {
+                return Self.jsonError(404, "not found")
+            }
+            self?.requestStop(id: id, reason: .cancel)
+            let job = Self.blockingAwait {
+                if let j = await store.job(id: id) {
+                    PipelineCheckpointStore().remove(videoPath: j.path, targetLang: j.target)
+                }
+                return await store.redoJob(id: id)
+            }
+            guard let job else {
+                return Self.jsonError(404, "job not found")
+            }
+            return .ok(.json(job.jsonObject()))
         }
 
         // POST /probe/audio-language  body {"path":"..."}
@@ -898,12 +1020,18 @@ public final class DaemonServer: @unchecked Sendable {
                     }
                 } catch {
                     self?.clearCurrent()
-                    // A preempt cancels the task → re-queue (not fail), so the
-                    // prioritized title runs next and this one resumes later.
-                    if self?.wasPreempted(job.id) ?? false {
+                    let stopReason = self?.takeStopReason(job.id)
+                    switch stopReason {
+                    case .pause:
+                        await store.markPaused(job.id)
+                        self?.log("paused job \(job.id)")
+                    case .cancel:
+                        await store.markCancelled(job.id)
+                        self?.log("cancelled job \(job.id)")
+                    case .preempt:
                         await store.markQueued(job.id)
                         self?.log("preempted job \(job.id) → re-queued")
-                    } else {
+                    case .none:
                         await store.markFailed(job.id, error: "\(error)")
                         self?.log("failed job \(job.id): \(error)")
                         if let sqlite, var t = title {

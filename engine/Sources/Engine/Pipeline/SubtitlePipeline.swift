@@ -238,6 +238,7 @@ public actor SubtitlePipeline {
         onProgress: @Sendable (Double, String) -> Void = { _, _ in },
         onDraftReady: @Sendable (String) -> Void = { _ in }
     ) async throws -> SubtitleJobResult {
+        try Task.checkCancellation()
         // Short-circuit: already produced (unless a re-generate forces a fresh run,
         // which overwrites the existing sidecar at the assemble step).
         if !force, let existing = Self.existingSidecar(videoPath: videoPath, lang: targetLang) {
@@ -438,7 +439,7 @@ public actor SubtitlePipeline {
         //     correcting one character in the bible invalidates that character's
         //     lines and leaves the rest as cache hits, turning a full re-run into a
         //     few seconds of work. `force` (Re-generate) bypasses the cache entirely.
-        var cueCache = CueTranslationCache(videoPath: videoPath)
+        let cueCache = CueTranslationCache(videoPath: videoPath)
         var keyByCueIndex: [Int: String] = [:]
         var cachedTranslations: [Int: String] = [:]
         for cue in sentenceCues {
@@ -451,13 +452,16 @@ public actor SubtitlePipeline {
             if !force, let hit = cueCache.value(for: key) { cachedTranslations[cue.index] = hit }
         }
 
+        let keyLookup = keyByCueIndex
+        let keepKeys = Set(keyByCueIndex.values)
+
         /// Persist the run's translations under their keys, pruning anything this
         /// title no longer refers to.
-        func rememberTranslations(_ bySentence: [Int: String]) {
+        let rememberTranslations: @Sendable ([Int: String]) -> Void = { bySentence in
             for (cueIndex, text) in bySentence {
-                if let key = keyByCueIndex[cueIndex] { cueCache.store(text, for: key) }
+                if let key = keyLookup[cueIndex] { cueCache.store(text, for: key) }
             }
-            cueCache.save(keeping: Set(keyByCueIndex.values))
+            cueCache.save(keeping: keepKeys)
         }
 
         // [sentence ordinal: Hebrew] → split each sentence across its source cues.
@@ -510,6 +514,7 @@ public actor SubtitlePipeline {
             var final = pass1.translationsByCueIndex
             let total = max(packets.count, 1)
             for (i, packet) in packets.enumerated() where !packet.isEmpty {
+                try Task.checkCancellation()
                 let flagged = GenderRefinement.flaggedLocals(packet.lines)
                 if !flagged.isEmpty {
                     let pass1He = packet.cueIndices.map { pass1.translationsByCueIndex[$0] ?? "" }

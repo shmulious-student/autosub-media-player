@@ -690,6 +690,45 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(cur?.state, .done)
     }
 
+    func testJobStorePauseResumeCancelRedo() async {
+        let store = JobStore()
+        let job = await store.enqueue(path: "/movies/Paused.mkv", target: "he")
+        XCTAssertEqual(job.state, .queued)
+
+        // Mark running with 50% progress
+        await store.markRunning(job.id, stage: "translate", progress: 0.5)
+        var cur = await store.job(id: job.id)
+        XCTAssertEqual(cur?.state, .running)
+        XCTAssertEqual(cur?.progress ?? 0, 0.5, accuracy: 1e-9)
+
+        // Pause preserves progress
+        await store.markPaused(job.id)
+        cur = await store.job(id: job.id)
+        XCTAssertEqual(cur?.state, .paused)
+        XCTAssertEqual(cur?.progress ?? 0, 0.5, accuracy: 1e-9)
+
+        // Resume re-queues without zeroing progress
+        await store.markQueued(job.id)
+        cur = await store.job(id: job.id)
+        XCTAssertEqual(cur?.state, .queued)
+        XCTAssertEqual(cur?.progress ?? 0, 0.5, accuracy: 1e-9)
+
+        // Cancel marks failed with "Cancelled by user"
+        await store.cancelJob(id: job.id)
+        cur = await store.job(id: job.id)
+        XCTAssertEqual(cur?.state, .failed)
+        XCTAssertEqual(cur?.error, "Cancelled by user")
+
+        // Redo resets stage, progress to 0, clears error, sets force = true
+        await store.redoJob(id: job.id)
+        cur = await store.job(id: job.id)
+        XCTAssertEqual(cur?.state, .queued)
+        XCTAssertEqual(cur?.progress, 0.0)
+        XCTAssertNil(cur?.error)
+        XCTAssertNil(cur?.stage)
+        XCTAssertEqual(cur?.force, true)
+    }
+
     func testJobStoreDeduplicatesActiveJobs() async {
         let store = JobStore()
         let a = await store.enqueue(path: "/movies/A.mkv", target: "he")

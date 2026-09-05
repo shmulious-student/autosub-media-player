@@ -71,7 +71,8 @@ class EngineJob {
   final int? durationMs;
   final JobRating? rating;
 
-  bool get isActive => state == 'queued' || state == 'running';
+  bool get isActive => state == 'queued' || state == 'running' || state == 'paused';
+  bool get isPaused => state == 'paused';
 
   /// Progressive strategy: the 7B draft sidecar is written and watchable, but the
   /// 12B is still upgrading gender in the background. The app can play now and
@@ -290,6 +291,79 @@ class EngineClient {
     if (r.statusCode != 200) {
       throw Exception('deleteJob failed: ${r.statusCode}');
     }
+  }
+
+  /// Cancel a running, queued, or paused job. Running jobs are aborted cooperatively
+  /// and marked failed; queued/paused jobs are marked cancelled.
+  Future<EngineJob?> cancelJob(String id) async {
+    final r = await http
+        .post(_u('/jobs/${Uri.encodeComponent(id)}/cancel'))
+        .timeout(_timeout);
+    if (r.statusCode != 200) {
+      throw Exception('cancelJob failed: ${r.statusCode} ${r.body}');
+    }
+    final body = jsonDecode(r.body) as Map<String, dynamic>;
+    if (body.containsKey('id')) {
+      return EngineJob.fromJson(body);
+    }
+    if (body['job'] is Map<String, dynamic>) {
+      return EngineJob.fromJson(body['job'] as Map<String, dynamic>);
+    }
+    return null;
+  }
+
+  /// Pause a running job mid-execution. Progress and checkpoints are kept intact.
+  Future<EngineJob?> pauseJob(String id) async {
+    final r = await http
+        .post(_u('/jobs/${Uri.encodeComponent(id)}/pause'))
+        .timeout(_timeout);
+    if (r.statusCode != 200) {
+      throw Exception('pauseJob failed: ${r.statusCode} ${r.body}');
+    }
+    final body = jsonDecode(r.body) as Map<String, dynamic>;
+    if (body.containsKey('id')) {
+      return EngineJob.fromJson(body);
+    }
+    if (body['job'] is Map<String, dynamic>) {
+      return EngineJob.fromJson(body['job'] as Map<String, dynamic>);
+    }
+    return null;
+  }
+
+  /// Resume a paused job. Continues from its saved progress / checkpoint.
+  Future<EngineJob?> resumeJob(String id) async {
+    final r = await http
+        .post(_u('/jobs/${Uri.encodeComponent(id)}/resume'))
+        .timeout(_timeout);
+    if (r.statusCode != 200) {
+      throw Exception('resumeJob failed: ${r.statusCode} ${r.body}');
+    }
+    final body = jsonDecode(r.body) as Map<String, dynamic>;
+    if (body.containsKey('id')) {
+      return EngineJob.fromJson(body);
+    }
+    if (body['job'] is Map<String, dynamic>) {
+      return EngineJob.fromJson(body['job'] as Map<String, dynamic>);
+    }
+    return null;
+  }
+
+  /// Redo a job from scratch, clearing errors, previous results and forcing re-run.
+  Future<EngineJob?> redoJob(String id) async {
+    final r = await http
+        .post(_u('/jobs/${Uri.encodeComponent(id)}/redo'))
+        .timeout(_timeout);
+    if (r.statusCode != 200) {
+      throw Exception('redoJob failed: ${r.statusCode} ${r.body}');
+    }
+    final body = jsonDecode(r.body) as Map<String, dynamic>;
+    if (body.containsKey('id')) {
+      return EngineJob.fromJson(body);
+    }
+    if (body['job'] is Map<String, dynamic>) {
+      return EngineJob.fromJson(body['job'] as Map<String, dynamic>);
+    }
+    return null;
   }
 
   /// Ask the engine's local model for a one-sentence "role in the plot" per

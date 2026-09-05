@@ -162,6 +162,9 @@ class ProcessingManager extends ChangeNotifier {
   /// Per-path timing anchor (set when a job is first seen running).
   final Map<String, _Anchor> _anchors = {};
 
+  /// Explicitly dismissed video paths so auto-sweep doesn't immediately resurrect them.
+  final Set<String> _dismissedPaths = {};
+
   Timer? _timer;
   bool _ticking = false;
 
@@ -233,6 +236,7 @@ class ProcessingManager extends ChangeNotifier {
     bool force = false,
     bool fetchSource = true,
   }) async {
+    _dismissedPaths.remove(path);
     try {
       final src = fetchSource ? await _sourceFor(path) : null;
       final chars = await _charsFor(path);
@@ -257,6 +261,7 @@ class ProcessingManager extends ChangeNotifier {
   /// Enqueue translation for a set of paths (e.g. a whole season/series). Paths
   /// that already have a sidecar are skipped.
   Future<void> generateAll(List<String> paths, {bool force = false}) async {
+    _dismissedPaths.removeAll(paths);
     for (final path in paths) {
       try {
         final src = await _sourceFor(path);
@@ -285,6 +290,7 @@ class ProcessingManager extends ChangeNotifier {
     bool preempt = false,
     bool force = false,
   }) async {
+    _dismissedPaths.removeAll(paths);
     try {
       // The prioritize endpoint only reorders; it can't carry the fetched source
       // subtitle / gender map. So first (idempotently) create each job WITH them,
@@ -320,6 +326,55 @@ class ProcessingManager extends ChangeNotifier {
     }
   }
 
+  /// Cancel a running, queued, or paused job.
+  Future<void> cancelJob(EngineJob job) async {
+    try {
+      final updated = await engine.cancelJob(job.id);
+      if (updated != null) {
+        _byPath[job.path] = updated;
+      }
+      _reconcileAnchors();
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  /// Pause a running job mid-execution.
+  Future<void> pauseJob(EngineJob job) async {
+    try {
+      final updated = await engine.pauseJob(job.id);
+      if (updated != null) {
+        _byPath[job.path] = updated;
+      }
+      _reconcileAnchors();
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  /// Resume a paused job.
+  Future<void> resumeJob(EngineJob job) async {
+    try {
+      final updated = await engine.resumeJob(job.id);
+      if (updated != null) {
+        _byPath[job.path] = updated;
+      }
+      _reconcileAnchors();
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  /// Redo a job from scratch, clearing previous checkpoint and forcing re-run.
+  Future<void> redoJob(EngineJob job) async {
+    _dismissedPaths.remove(job.path);
+    try {
+      final updated = await engine.redoJob(job.id);
+      if (updated != null) {
+        _byPath[job.path] = updated;
+      }
+      _reconcileAnchors();
+      notifyListeners();
+    } catch (_) {}
+  }
+
   /// Clear local job tracking and the daemon's non-running jobs (used when the
   /// library or queue is cleared). A job already running on the daemon finishes.
   Future<void> clearQueue() async {
@@ -337,6 +392,7 @@ class ProcessingManager extends ChangeNotifier {
   /// cancellation path; active jobs stay owned by the daemon queue.
   Future<bool> deleteHistoryJob(EngineJob job) async {
     if (job.state != 'done' && job.state != 'failed') return false;
+    _dismissedPaths.add(job.path);
     try {
       await engine.deleteJob(job.id);
       if (_byPath[job.path]?.id == job.id) {
@@ -367,6 +423,7 @@ class ProcessingManager extends ChangeNotifier {
       // is an explicit action.
       for (final e in store.entries) {
         if (e.hasSidecar(_targetLang)) continue;
+        if (_dismissedPaths.contains(e.path)) continue;
         if (_byPath.containsKey(e.path)) continue;
         // Don't start translating until enrichment (TMDB match + credits) is done —
         // so the source subtitle + character gender map are ready. Not-ready titles

@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AutoSub — UX/UI Deliverable Task Breakdown &amp; Token Budget</title>
+<style>
+:root{
+ --bg:#0A0D14;--surface:#111520;--card:#151A26;--card2:#1D2436;
+ --line:rgba(255,255,255,.08);--line2:rgba(255,255,255,.16);
+ --accent:#E8A33D;--accent-dim:rgba(232,163,61,.14);
+ --t1:#F3F4F6;--t2:#9CA3AF;--t3:#6B7280;
+ --ok:#10B981;--ok-bg:rgba(16,185,129,.12);
+ --warn:#F59E0B;--warn-bg:rgba(245,158,11,.14);
+ --info:#3B82F6;--info-bg:rgba(59,130,246,.14);
+ --bad:#EF4444;--bad-bg:rgba(239,68,68,.14);
+ --purple:#8B5CF6;--purple-bg:rgba(139,92,246,.14);
+ --r:10px;--r2:16px;
+ --ui:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+ --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
+body{background:var(--bg);color:var(--t1);font-family:var(--ui);font-size:15px;line-height:1.6}
+header{position:sticky;top:0;z-index:10;background:rgba(10,13,20,.88);backdrop-filter:blur(16px);
+ border-bottom:1px solid var(--line);padding:14px 32px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:12px}
+.mark{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#F5B04C,#E8A33D 60%,#9E5B0E);
+ color:#0A0D14;font-weight:900;display:flex;align-items:center;justify-content:center}
+.brand h1{font-size:16px;font-weight:700;letter-spacing:-.3px}
+.brand p{font-size:12px;color:var(--t2)}
+.pill{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:3px 9px;border-radius:999px;
+ background:var(--accent-dim);color:var(--accent);border:1px solid rgba(232,163,61,.3)}
+main{max-width:1240px;margin:0 auto;padding:36px 32px 100px}
+.hero{background:radial-gradient(circle at 85% 15%,rgba(232,163,61,.12),transparent 60%),linear-gradient(180deg,#181D2B,#111520);
+ border:1px solid var(--line2);border-radius:22px;padding:36px;margin-bottom:36px}
+.hero h2{font-size:30px;font-weight:800;letter-spacing:-.7px;line-height:1.2;margin-bottom:12px}
+.hero p{color:var(--t2);max-width:820px}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:26px;padding-top:22px;border-top:1px solid var(--line)}
+.metric{background:rgba(10,13,20,.45);border:1px solid var(--line);border-radius:var(--r2);padding:14px 18px}
+.metric .v{font-family:var(--mono);font-size:24px;font-weight:800;color:var(--accent);letter-spacing:-.5px}
+.metric .l{font-size:12px;color:var(--t2);margin-top:2px}
+h3.sec{font-size:23px;font-weight:800;letter-spacing:-.4px;margin:44px 0 6px}
+.eyebrow{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--accent)}
+p.sub{color:var(--t2);margin-bottom:22px;max-width:840px}
+.note{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:var(--r);
+ padding:16px 20px;margin:18px 0;color:var(--t2);font-size:14px}
+.note b{color:var(--t1)}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:var(--r2);overflow:hidden}
+.scroll{overflow-x:auto;border-radius:var(--r2)}
+th{background:#0F131D;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--t3);
+ padding:12px 14px;border-bottom:1px solid var(--line2);white-space:nowrap}
+td{padding:13px 14px;border-bottom:1px solid var(--line);font-size:14px;vertical-align:top}
+tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--card2)}
+td.num,th.num{text-align:right;font-family:var(--mono);white-space:nowrap}
+.id{font-family:var(--mono);color:var(--accent);font-weight:700}
+.tag{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.p0{background:var(--bad-bg);color:var(--bad)} .p1{background:var(--warn-bg);color:var(--warn)}
+.p2{background:var(--purple-bg);color:var(--purple)}
+.s-done{background:var(--ok-bg);color:var(--ok)} .s-part{background:var(--info-bg);color:var(--info)}
+.s-new{background:rgba(255,255,255,.06);color:var(--t2)}
+.bar{height:6px;background:rgba(255,255,255,.07);border-radius:999px;overflow:hidden;min-width:90px;margin-top:6px}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,#E8A33D,#F5B04C)}
+.grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r2);padding:20px 22px}
+.card h4{font-size:16px;font-weight:700;margin-bottom:8px}
+.card ul{margin:8px 0 0 18px;color:var(--t2);font-size:14px}
+.card li{margin-bottom:5px}
+.small{font-size:12.5px;color:var(--t3)}
+.win{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.winbox{flex:1 1 200px;background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+.winbox .h{font-size:12px;color:var(--t3);text-transform:uppercase;letter-spacing:.6px}
+.winbox .b{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--t1);margin-top:4px}
+footer{border-top:1px solid var(--line);margin-top:50px;padding-top:20px;color:var(--t3);font-size:12.5px}
+@media(max-width:900px){.metrics,.grid2{grid-template-columns:1fr 1fr}}
+@media(max-width:620px){.metrics,.grid2{grid-template-columns:1fr}main{padding:24px 16px 60px}}
+</style></head><body>
+
+<header>
+  <div class="brand"><div class="mark">AS</div>
+    <div><h1>Deliverable Task Breakdown <span class="pill">Token Budget</span></h1>
+      <p>Derived from <span class="mono">docs/UX_UI_DESIGN_REPORT.html</span> · scored against the current repo</p></div>
+  </div>
+  <div class="small">Scale: % of one 5-hour Claude Code window (Opus)</div>
+</header>
+
+<main>
+<section class="hero">
+  <span class="eyebrow">Execution Plan</span>
+  <h2>28 deliverable tasks, priced in 5-hour-window percentage</h2>
+  <p>Every proposal in the UX/UI blueprint, converted into an implementable task with a status check against
+  what already exists in <span class="mono">lib/</span> and <span class="mono">engine/Sources/Engine/</span>.
+  Cost is expressed as a share of a single 5-hour usage window: <b>100% = one full window consumed by that task alone</b>
+  (exploration, edits, test runs, and review iterations included).</p>
+  <div class="metrics">
+    <div class="metric"><div class="v">28</div><div class="l">Deliverable tasks</div></div>
+    <div class="metric"><div class="v">~473%</div><div class="l">Total cost ≈ 5 full windows</div></div>
+    <div class="metric"><div class="v">6</div><div class="l">Already shipped / partial</div></div>
+    <div class="metric"><div class="v">3</div><div class="l">Sprints (P0 → P2)</div></div>
+  </div>
+</section>
+
+<div class="note">
+  <b>How to read the cost column.</b> One 5-hour window is the unit. A task at <b>18%</b> means roughly one fifth of a
+  window — you can land about five such tasks before hitting the limit. Estimates assume Opus with normal exploration,
+  a real edit pass, <span class="mono">flutter test</span> / <span class="mono">swift build</span> verification, and one
+  round of fixes. They do <i>not</i> include re-reading the whole design report each session — keep that context out of
+  the loop by working task-by-task. Add <b>~30–40%</b> to any task if it is the first one in a fresh session on an
+  unfamiliar subsystem.
+</div>
+
+<h3 class="sec">Sprint 1 — Player Polish <span class="tag p0">P0</span></h3>
+<p class="sub">In-player precision sync, dual-subtitle rendering, and the timeline runway. Highest delight per token: the player already has a delay path (<span class="mono">player_page.dart:185</span> drives mpv <span class="mono">sub-delay</span>), so most of this is surfacing and persistence.</p>
+<div class="scroll"><table>
+<thead><tr><th>ID</th><th>Task</th><th>Touches</th><th>Status</th><th class="num">Cost</th></tr></thead>
+<tbody>
+<tr><td class="id">T‑01</td><td><b>Persist subtitle offset per title</b><div class="small">Write the nudge value to SQLite + the sidecar so it survives relaunch and export.</div></td><td class="mono small">player_page.dart, models.dart, subtitle_export.dart</td><td><span class="tag s-part">Partial</span><div class="small">±ms nudge exists, not persisted</div></td><td class="num">8%<div class="bar"><i style="width:8%"></i></div></td></tr>
+<tr><td class="id">T‑02</td><td><b>Floating sync HUD on TransportBar</b><div class="small">−/0ms/+ stepper, glass badge with Hebrew label, auto-hide with the rest of the controls.</div></td><td class="mono small">transport_bar.dart, tokens.dart</td><td><span class="tag s-new">New</span></td><td class="num">12%<div class="bar"><i style="width:12%"></i></div></td></tr>
+<tr><td class="id">T‑03</td><td><b>Z / X hotkeys ±50ms + shortcuts sheet entry</b></td><td class="mono small">player_page.dart, shortcuts_sheet.dart</td><td><span class="tag s-new">New</span></td><td class="num">4%<div class="bar"><i style="width:4%"></i></div></td></tr>
+<tr><td class="id">T‑04</td><td><b>Timeline runway heatmap on the scrubber</b><div class="small">Two-tone gradient: cached/ready segments vs in-flight AI chunks.</div></td><td class="mono small">subtitle_runway.dart, transport_bar.dart</td><td><span class="tag s-part">Partial</span><div class="small">runway bar exists, no per-segment map</div></td><td class="num">16%<div class="bar"><i style="width:16%"></i></div></td></tr>
+<tr><td class="id">T‑05</td><td><b>Dual-language subtitle stack (key D)</b><div class="small">Hebrew primary 24pt RTL bottom, English secondary 16pt muted above; needs a second sub track fed to mpv.</div></td><td class="mono small">player_page.dart, subtitle_appearance.dart</td><td><span class="tag s-new">New</span></td><td class="num">22%<div class="bar"><i style="width:22%"></i></div></td></tr>
+<tr><td class="id">T‑06</td><td><b>Cue loop (A / S) — replay current sentence</b></td><td class="mono small">player_page.dart</td><td><span class="tag s-new">New</span></td><td class="num">7%<div class="bar"><i style="width:7%"></i></div></td></tr>
+<tr><td class="id">T‑07</td><td><b>Hover lexicon: transliteration + lemma on pause</b><div class="small">Needs a dictionary source decision — the only genuinely open dependency in Sprint 1.</div></td><td class="mono small">player_page.dart, new lexicon service</td><td><span class="tag s-new">New</span></td><td class="num">26%<div class="bar"><i style="width:26%"></i></div></td></tr>
+<tr><td class="id">T‑08</td><td><b>Hot-swap regression tests</b><div class="small">Playback position must survive a mid-stream subtitle replacement.</div></td><td class="mono small">test/subtitle_runway_test.dart, test/playback_progress_test.dart</td><td><span class="tag s-part">Partial</span></td><td class="num">9%<div class="bar"><i style="width:9%"></i></div></td></tr>
+</tbody></table></div>
+<div class="win"><div class="winbox"><div class="h">Sprint 1 subtotal</div><div class="b">104%</div></div>
+<div class="winbox"><div class="h">Windows needed</div><div class="b">≈ 1.0</div></div>
+<div class="winbox"><div class="h">Cheapest first</div><div class="b">T‑03 → T‑01 → T‑02</div></div></div>
+
+<h3 class="sec">Sprint 2 — Cloud Turbo &amp; Orchestrator <span class="tag p0">P0</span></h3>
+<p class="sub">Most of the backend already landed: <span class="mono">engine/Sources/Engine/Cloud/</span> ships Groq, Google AI Studio, and Cloudflare clients with a rate limiter. The remaining work is the <i>UX surface</i> — key vault, quota meters, and the per-title engine switch.</p>
+<div class="scroll"><table>
+<thead><tr><th>ID</th><th>Task</th><th>Touches</th><th>Status</th><th class="num">Cost</th></tr></thead>
+<tbody>
+<tr><td class="id">T‑09</td><td><b>Cloud provider interface (Local vs Cloud)</b></td><td class="mono small">engine/Sources/Engine/Cloud/*</td><td><span class="tag s-done">Shipped</span><div class="small">commit 540e1db</div></td><td class="num">0%</td></tr>
+<tr><td class="id">T‑10</td><td><b>API key vault in Settings</b><div class="small">Keychain-backed storage via <span class="mono">secure_files.dart</span>, masked entry, per-provider rows.</div></td><td class="mono small">settings_page.dart, app_settings.dart, secure_files.dart</td><td><span class="tag s-new">New</span></td><td class="num">14%<div class="bar"><i style="width:14%"></i></div></td></tr>
+<tr><td class="id">T‑11</td><td><b>One-click key test: validity, ping, quota</b></td><td class="mono small">engine_client.dart, CloudConfig.swift</td><td><span class="tag s-new">New</span></td><td class="num">13%<div class="bar"><i style="width:13%"></i></div></td></tr>
+<tr><td class="id">T‑12</td><td><b>Daily quota / token meter UI</b><div class="small">Reads the existing <span class="mono">CloudRateLimiter</span> counters over IPC.</div></td><td class="mono small">CloudRateLimiter.swift, DaemonServer.swift, settings_page.dart</td><td><span class="tag s-part">Partial</span><div class="small">limiter exists, not exposed</div></td><td class="num">15%<div class="bar"><i style="width:15%"></i></div></td></tr>
+<tr><td class="id">T‑13</td><td><b>Per-title Compute Orchestrator toggle</b><div class="small">Air-Gapped Local ↔ Cloud Turbo on Title Detail, with the choice recorded on the job.</div></td><td class="mono small">title_detail_page.dart, processing_manager.dart, engine_job</td><td><span class="tag s-new">New</span></td><td class="num">17%<div class="bar"><i style="width:17%"></i></div></td></tr>
+<tr><td class="id">T‑14</td><td><b>Live throughput readout (tok/s, RAM pressure)</b><div class="small">The Lab 2 simulator, made real: engine telemetry streamed into the queue row.</div></td><td class="mono small">Hardware/, DaemonServer.swift, job_queue_row.dart</td><td><span class="tag s-new">New</span></td><td class="num">19%<div class="bar"><i style="width:19%"></i></div></td></tr>
+<tr><td class="id">T‑15</td><td><b>Graceful cloud→local fallback on quota exhaustion</b><div class="small">Restart-safety already exists (commit c1c1985); this adds the provider-swap path plus a user-visible reason.</div></td><td class="mono small">Pipeline/, CloudRateLimiter.swift</td><td><span class="tag s-part">Partial</span></td><td class="num">18%<div class="bar"><i style="width:18%"></i></div></td></tr>
+</tbody></table></div>
+<div class="win"><div class="winbox"><div class="h">Sprint 2 subtotal</div><div class="b">96%</div></div>
+<div class="winbox"><div class="h">Windows needed</div><div class="b">≈ 1.0</div></div>
+<div class="winbox"><div class="h">Saved by prior work</div><div class="b">~45%</div></div></div>
+
+<h3 class="sec">Sprint 3 — Waveform Studio, Bible 2.0, Command Palette <span class="tag p1">P1</span></h3>
+<p class="sub">The heaviest sprint. The waveform track and the relationship matrix are both new subsystems, not refinements — each needs an engine-side data path in addition to the Flutter surface.</p>
+<div class="scroll"><table>
+<thead><tr><th>ID</th><th>Task</th><th>Touches</th><th>Status</th><th class="num">Cost</th></tr></thead>
+<tbody>
+<tr><td class="id">T‑16</td><td><b>16 kHz speech-envelope extraction + cache</b><div class="small">Engine emits a downsampled peak array per media file; cached beside the sidecar.</div></td><td class="mono small">engine/Sources/Engine/Media/, Store/</td><td><span class="tag s-new">New</span></td><td class="num">21%<div class="bar"><i style="width:21%"></i></div></td></tr>
+<tr><td class="id">T‑17</td><td><b>Waveform track widget in Subtitle Studio</b><div class="small">Custom painter, zoom, playhead sync with the preview scrubber.</div></td><td class="mono small">subtitle_editor_page.dart</td><td><span class="tag s-new">New</span></td><td class="num">24%<div class="bar"><i style="width:24%"></i></div></td></tr>
+<tr><td class="id">T‑18</td><td><b>Draggable cue boxes with snap-to-silence</b><div class="small">Magnetic handles against detected pause valleys.</div></td><td class="mono small">subtitle_editor_page.dart, srt.dart</td><td><span class="tag s-new">New</span></td><td class="num">20%<div class="bar"><i style="width:20%"></i></div></td></tr>
+<tr><td class="id">T‑19</td><td><b>CPS barometer with Hebrew-tuned thresholds</b><div class="small">17 cps max / 14 recommended, colour-graded per row.</div></td><td class="mono small">subtitle_line_row, srt.dart, test/srt_test.dart</td><td><span class="tag s-new">New</span></td><td class="num">10%<div class="bar"><i style="width:10%"></i></div></td></tr>
+<tr><td class="id">T‑20</td><td><b>Per-line AI re-translate (⌘R) with context</b><div class="small">Single-cue resubmit carrying episode context; must respect <span class="mono">has_user_edits</span>.</div></td><td class="mono small">engine_client.dart, Translation/, subtitle_editor_page.dart</td><td><span class="tag s-new">New</span></td><td class="num">18%<div class="bar"><i style="width:18%"></i></div></td></tr>
+<tr><td class="id">T‑21</td><td><b>Speaker → Addressee relationship matrix</b><div class="small">Data model, graph editor, and Formal/Intimate/Family/Subordinate register.</div></td><td class="mono small">characters_section.dart, Dialogue/, Models/</td><td><span class="tag s-new">New</span></td><td class="num">28%<div class="bar"><i style="width:28%"></i></div></td></tr>
+<tr><td class="id">T‑22</td><td><b>Impact Simulator + consent-driven re-queue</b><div class="small">"Changing this gender inflects 142 lines" — count affected cues before committing.</div></td><td class="mono small">BibleStore, processing_manager.dart</td><td><span class="tag s-new">New</span></td><td class="num">17%<div class="bar"><i style="width:17%"></i></div></td></tr>
+<tr><td class="id">T‑23</td><td><b>Confidence-weighted TMDB cast auto-population</b></td><td class="mono small">tmdb_client.dart, cast_member.dart</td><td><span class="tag s-part">Partial</span><div class="small">cast fetch exists; no confidence weighting</div></td><td class="num">12%<div class="bar"><i style="width:12%"></i></div></td></tr>
+<tr><td class="id">T‑24</td><td><b>Universal Command Palette (⌘K)</b><div class="small">Fuzzy match over titles, episodes, characters, and queue actions; global shortcut in AppShell.</div></td><td class="mono small">app_shell.dart, library_store.dart</td><td><span class="tag s-new">New</span></td><td class="num">20%<div class="bar"><i style="width:20%"></i></div></td></tr>
+</tbody></table></div>
+<div class="win"><div class="winbox"><div class="h">Sprint 3 subtotal</div><div class="b">170%</div></div>
+<div class="winbox"><div class="h">Windows needed</div><div class="b">≈ 1.7</div></div>
+<div class="winbox"><div class="h">Split point</div><div class="b">T‑16…T‑20 | T‑21…T‑24</div></div></div>
+
+<h3 class="sec">Sprint 4 — Ecosystem &amp; Platform Citizenship <span class="tag p2">P2</span></h3>
+<p class="sub">Interoperability and macOS-native behaviour. Lower delight per token than Sprints 1–3, but T‑25 is the single feature most likely to move AutoSub into a living room.</p>
+<div class="scroll"><table>
+<thead><tr><th>ID</th><th>Task</th><th>Touches</th><th>Status</th><th class="num">Cost</th></tr></thead>
+<tbody>
+<tr><td class="id">T‑25</td><td><b>Lossless MKV remux export</b><div class="small">Inject the subtitle track via libav/mkvmerge with no re-encode; Infuse/Plex/Apple&nbsp;TV ready.</div></td><td class="mono small">subtitle_export.dart, EngineSidecar</td><td><span class="tag s-part">Partial</span><div class="small">SRT/ASS export shipped (cdf9879)</div></td><td class="num">23%<div class="bar"><i style="width:23%"></i></div></td></tr>
+<tr><td class="id">T‑26</td><td><b>TMDB disambiguation carousel + edition stacking</b><div class="small">Poster-comparison picker; collapse 4K/1080p duplicates into one card.</div></td><td class="mono small">fix_match_dialog.dart, library_grouping.dart</td><td><span class="tag s-part">Partial</span><div class="small">Fix-match dialog + grouping exist</div></td><td class="num">19%<div class="bar"><i style="width:19%"></i></div></td></tr>
+<tr><td class="id">T‑27</td><td><b>Power &amp; thermal aware scheduler</b><div class="small">Turbo / Quiet / Battery Saver presets, macOS power notifications, auto-yield during playback.</div></td><td class="mono small">processing_manager.dart, engine_supervisor.dart, Hardware/</td><td><span class="tag s-new">New</span></td><td class="num">22%<div class="bar"><i style="width:22%"></i></div></td></tr>
+<tr><td class="id">T‑28</td><td><b>Devices Dock — Bonjour pairing &amp; sync status</b><div class="small">Surface the existing <span class="mono">BonjourSyncProvider</span> in the left rail with per-device state.</div></td><td class="mono small">sync_provider.dart, app_shell.dart</td><td><span class="tag s-part">Partial</span><div class="small">Provider exists, no UI</div></td><td class="num">21%<div class="bar"><i style="width:21%"></i></div></td></tr>
+</tbody></table></div>
+<div class="win"><div class="winbox"><div class="h">Sprint 4 subtotal</div><div class="b">85%</div></div>
+<div class="winbox"><div class="h">Windows needed</div><div class="b">≈ 0.9</div></div>
+<div class="winbox"><div class="h">Defer safely</div><div class="b">T‑28, then T‑26</div></div></div>
+
+<h3 class="sec">Cross-cutting: Bidi &amp; Design-System compliance</h3>
+<p class="sub">The blueprint's Golden Bidi Rules apply to every task above. Budget this once, not per feature.</p>
+<div class="grid2">
+  <div class="card"><h4>Bidi audit pass <span class="tag p1">+12%</span></h4>
+    <ul><li>Chrome and rail stay LTR under a Hebrew locale.</li>
+    <li>Transport bar and scrubber never mirror — time flows left-to-right.</li>
+    <li>Subtitle overlay gets RLM / bidi embedding markers.</li>
+    <li>Editor fields: punctuation on the logical left, Latin names in <span class="mono">⁦…⁩</span> isolates.</li>
+    <li>Bible name pairs: English LTR isolate + Hebrew RTL isolate.</li></ul>
+    <p class="small" style="margin-top:10px">Existing helper: <span class="mono">lib/ui/bidi.dart</span> — the audit is mostly call-site coverage, not new code.</p></div>
+  <div class="card"><h4>Token conformance <span class="tag p2">+6%</span></h4>
+    <ul><li>New surfaces pull from <span class="mono">lib/ui/tokens.dart</span>, no hardcoded colours.</li>
+    <li>Status colours resolve through <span class="mono">entry_status.dart</span>.</li>
+    <li>Radii / shadows match DESIGN_SYSTEM §3.</li></ul>
+    <p class="small" style="margin-top:10px">Cheapest as a final sweep per sprint rather than a standalone task.</p></div>
+</div>
+
+<h3 class="sec">Budget summary</h3>
+<div class="scroll"><table>
+<thead><tr><th>Phase</th><th>Tasks</th><th>Theme</th><th class="num">Cost</th><th class="num">5-hr windows</th></tr></thead>
+<tbody>
+<tr><td><b>Sprint 1</b> <span class="tag p0">P0</span></td><td class="mono">T‑01 … T‑08</td><td>Player polish &amp; precision sync</td><td class="num">104%</td><td class="num">1.0</td></tr>
+<tr><td><b>Sprint 2</b> <span class="tag p0">P0</span></td><td class="mono">T‑09 … T‑15</td><td>Cloud Turbo orchestration UX</td><td class="num">96%</td><td class="num">1.0</td></tr>
+<tr><td><b>Sprint 3</b> <span class="tag p1">P1</span></td><td class="mono">T‑16 … T‑24</td><td>Waveform Studio, Bible 2.0, ⌘K</td><td class="num">170%</td><td class="num">1.7</td></tr>
+<tr><td><b>Sprint 4</b> <span class="tag p2">P2</span></td><td class="mono">T‑25 … T‑28</td><td>Ecosystem &amp; macOS citizenship</td><td class="num">85%</td><td class="num">0.9</td></tr>
+<tr><td><b>Cross-cutting</b></td><td class="mono">Bidi + tokens</td><td>Compliance sweeps</td><td class="num">18%</td><td class="num">0.2</td></tr>
+<tr style="background:#0F131D"><td><b>Total</b></td><td class="mono">28 tasks</td><td>Full blueprint delivery</td><td class="num"><b>473%</b></td><td class="num"><b>≈ 4.8</b></td></tr>
+</tbody></table></div>
+
+<div class="note" style="margin-top:24px">
+  <b>Recommended sequencing.</b> Run one sprint per window and stop at the sprint boundary — starting Sprint 3's waveform
+  work with 20% of a window left means paying the exploration cost twice. Within a window, front-load the cheap tasks
+  (T‑03, T‑01, T‑06) so a partial window still ships something. The two tasks worth reconsidering on cost-to-value are
+  <b>T‑07</b> (hover lexicon — 26% for a feature no other task depends on) and <b>T‑28</b> (Devices Dock — the transport
+  already works headlessly).
+</div>
+
+<footer>
+  Generated from <span class="mono">docs/UX_UI_DESIGN_REPORT.html</span> · statuses verified against
+  <span class="mono">lib/</span>, <span class="mono">engine/Sources/Engine/</span>, and recent commits
+  (c1c1985, 540e1db, cdf9879) · estimates are planning aids, not guarantees.
+</footer>
+</main></body></html>

@@ -207,6 +207,7 @@ public struct ScenePacketTranslator: Sendable {
         let total = max(packets.count, 1)
 
         for (i, packet) in packets.enumerated() where !packet.isEmpty {
+            try Task.checkCancellation()
             // Whole packet already translated under the same inputs — no request.
             let hits = packet.cueIndices.compactMap { cached[$0] }
             if hits.count == packet.cueIndices.count {

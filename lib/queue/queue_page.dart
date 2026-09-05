@@ -185,12 +185,113 @@ class _QueuePageState extends State<QueuePage> {
     }
   }
 
+  Future<void> _cancelJob(EngineJob job) async {
+    if (_busy) return;
+    if (!widget.manager.engineOnline) {
+      showToast(
+        context,
+        'Engine offline — cannot cancel job now.',
+        variant: ToastVariant.attention,
+      );
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await widget.manager.cancelJob(job);
+      if (mounted) {
+        showToast(
+          context,
+          'Cancelled "${_titleFor(job)}".',
+          variant: ToastVariant.info,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _pauseJob(EngineJob job) async {
+    if (_busy) return;
+    if (!widget.manager.engineOnline) {
+      showToast(
+        context,
+        'Engine offline — cannot pause job now.',
+        variant: ToastVariant.attention,
+      );
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await widget.manager.pauseJob(job);
+      if (mounted) {
+        showToast(
+          context,
+          'Paused "${_titleFor(job)}".',
+          variant: ToastVariant.info,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _resumeJob(EngineJob job) async {
+    if (_busy) return;
+    if (!widget.manager.engineOnline) {
+      showToast(
+        context,
+        'Engine offline — cannot resume job now.',
+        variant: ToastVariant.attention,
+      );
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await widget.manager.resumeJob(job);
+      if (mounted) {
+        showToast(
+          context,
+          'Resumed "${_titleFor(job)}".',
+          variant: ToastVariant.success,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _redoJob(EngineJob job) async {
+    if (_busy) return;
+    if (!widget.manager.engineOnline) {
+      showToast(
+        context,
+        'Engine offline — cannot restart job now.',
+        variant: ToastVariant.attention,
+      );
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await widget.manager.redoJob(job);
+      if (mounted) {
+        showToast(
+          context,
+          'Restarted "${_titleFor(job)}" from scratch.',
+          variant: ToastVariant.success,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final jobs = widget.manager.jobs;
     final running = jobs.where((j) => j.state == 'running').toList();
+    final paused = jobs.where((j) => j.state == 'paused').toList();
     final queued = jobs.where((j) => j.state == 'queued').toList();
-    final active = [...running, ...queued];
+    final active = [...running, ...paused, ...queued];
     final failed = jobs.where((j) => j.state == 'failed').toList();
     final done = jobs.where((j) => j.state == 'done').toList();
 
@@ -201,6 +302,7 @@ class _QueuePageState extends State<QueuePage> {
           _header(
             jobs: jobs,
             running: running.length,
+            paused: paused.length,
             queued: queued.length,
             failed: failed.length,
             done: done.length,
@@ -268,6 +370,7 @@ class _QueuePageState extends State<QueuePage> {
   Widget _header({
     required List<EngineJob> jobs,
     required int running,
+    required int paused,
     required int queued,
     required int failed,
     required int done,
@@ -334,6 +437,13 @@ class _QueuePageState extends State<QueuePage> {
                     value: '$running',
                     style: StatusStyles.running,
                   ),
+                  if (paused > 0)
+                    _SummaryTile(
+                      icon: Icons.pause_circle_outline,
+                      label: 'Paused',
+                      value: '$paused',
+                      style: StatusStyles.paused,
+                    ),
                   _SummaryTile(
                     icon: Icons.schedule,
                     label: 'Queued',
@@ -451,11 +561,17 @@ class _QueuePageState extends State<QueuePage> {
     final duration = job.finishedDuration ?? timing?.elapsed;
     final rating = job.rating;
 
+    final isRunning = job.state == 'running';
+    final isPaused = job.state == 'paused';
+    final isQueued = job.state == 'queued';
+    final isFailed = job.state == 'failed';
+    final isDone = job.state == 'done';
+
     return JobQueueRow(
       title: _titleFor(job),
       style: StatusStyles.forState(job.state),
       stage: job.stage,
-      progress: job.state == 'running' ? job.progress : null,
+      progress: (isRunning || isPaused) ? job.progress : null,
       detailLabel: _detailFor(job),
       queueLabel: queuedIndex >= 0
           ? _queueLabel(queuedIndex, queued.length)
@@ -470,11 +586,23 @@ class _QueuePageState extends State<QueuePage> {
       error: job.error,
       elapsed: timing?.elapsed,
       eta: timing?.eta,
+      onCancel: (isRunning || isPaused || isQueued)
+          ? () => _cancelJob(job)
+          : null,
+      onPause: (isRunning || isQueued)
+          ? () => _pauseJob(job)
+          : null,
+      onResume: isPaused
+          ? () => _resumeJob(job)
+          : null,
+      onRedo: (isPaused || isFailed || isDone)
+          ? () => _redoJob(job)
+          : null,
       onRetry: retryable ? () => _retryFailed([job]) : null,
-      onMoveNext: job.state == 'queued' && queuedIndex > 0
+      onMoveNext: isQueued && queuedIndex > 0
           ? () => _moveNext(job)
           : null,
-      onDeleteHistory: (job.state == 'done' || job.state == 'failed')
+      onDeleteHistory: (isDone || isFailed)
           ? () => _deleteHistory(job)
           : null,
     );

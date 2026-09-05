@@ -24,4 +24,21 @@ void main() {
     expect(job.rating?.score, 92);
     expect(job.rating?.label, 'Great');
   });
+
+  test('EngineJob paused state is active and reflects isPaused', () {
+    final pausedJob = EngineJob.fromJson({
+      'id': 'j2',
+      'path': '/m/B.mkv',
+      'target': 'he',
+      'state': 'paused',
+      'stage': 'translating',
+      'progress': 0.45,
+      'queuedAtUtcMs': 1782100000000,
+    });
+
+    expect(pausedJob.state, 'paused');
+    expect(pausedJob.isPaused, isTrue);
+    expect(pausedJob.isActive, isTrue);
+    expect(pausedJob.progress, 0.45);
+  });
 }

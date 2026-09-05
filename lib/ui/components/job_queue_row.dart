@@ -32,6 +32,10 @@ class JobQueueRow extends StatelessWidget {
     this.error,
     this.elapsed,
     this.eta,
+    this.onCancel,
+    this.onPause,
+    this.onResume,
+    this.onRedo,
     this.onRetry,
     this.onMoveNext,
     this.onDeleteHistory,
@@ -61,12 +65,17 @@ class JobQueueRow extends StatelessWidget {
   final Duration? elapsed;
   final Duration? eta;
 
+  final VoidCallback? onCancel;
+  final VoidCallback? onPause;
+  final VoidCallback? onResume;
+  final VoidCallback? onRedo;
   final VoidCallback? onRetry;
   final VoidCallback? onMoveNext;
   final VoidCallback? onDeleteHistory;
   final VoidCallback? onOpenDetails;
 
   bool get _running => style == StatusStyles.running;
+  bool get _paused => style == StatusStyles.paused;
   bool get _failed => style == StatusStyles.failed;
 
   @override
@@ -124,13 +133,13 @@ class JobQueueRow extends StatelessWidget {
             _StateGlyph(style: style),
             const SizedBox(width: AppSpacing.x3),
             Expanded(child: _titleBlock()),
-            if (!_running || progress == null) ...[
+            if ((!_running && !_paused) || progress == null) ...[
               const SizedBox(width: AppSpacing.x2),
               StatusChip(style: style, size: StatusChipSize.sm),
             ],
           ],
         ),
-        if (_running && progress != null) ...[
+        if ((_running || _paused) && progress != null) ...[
           const SizedBox(height: AppSpacing.x3),
           _statusOrProgress(width: double.infinity, alignEnd: false),
         ],
@@ -220,7 +229,7 @@ class JobQueueRow extends StatelessWidget {
   }
 
   Widget _statusOrProgress({required double width, required bool alignEnd}) {
-    if (!_running || progress == null) {
+    if ((!_running && !_paused) || progress == null) {
       return StatusChip(style: style, size: StatusChipSize.md);
     }
 
@@ -236,7 +245,7 @@ class JobQueueRow extends StatelessWidget {
             value: progress,
             label: '${(progress! * 100).round()}%',
           ),
-          if (elapsed != null) ...[
+          if (_running && elapsed != null) ...[
             const SizedBox(height: AppSpacing.x1),
             LtrIsland(
               child: Text(
@@ -246,6 +255,12 @@ class JobQueueRow extends StatelessWidget {
                 style: AppType.bodySm.copyWith(color: AppColors.textSecondary),
               ),
             ),
+          ] else if (_paused) ...[
+            const SizedBox(height: AppSpacing.x1),
+            Text(
+              'Paused',
+              style: AppType.bodySm.copyWith(color: AppColors.pausedFg),
+            ),
           ],
         ],
       ),
@@ -253,13 +268,25 @@ class JobQueueRow extends StatelessWidget {
   }
 
   Widget _actions({bool compact = false}) {
-    if (onMoveNext == null &&
-        onDeleteHistory == null &&
-        (!_failed || onRetry == null)) {
-      return const SizedBox.shrink();
-    }
-
     final children = <Widget>[
+      if (onResume != null)
+        Tooltip(
+          message: 'Resume',
+          child: IconButton(
+            onPressed: onResume,
+            icon: const Icon(Icons.play_arrow_rounded, size: 20),
+            color: AppColors.readyFg,
+          ),
+        ),
+      if (onPause != null)
+        Tooltip(
+          message: 'Pause',
+          child: IconButton(
+            onPressed: onPause,
+            icon: const Icon(Icons.pause_rounded, size: 20),
+            color: AppColors.textSecondary,
+          ),
+        ),
       if (onMoveNext != null)
         Tooltip(
           message: 'Move to front',
@@ -275,6 +302,24 @@ class JobQueueRow extends StatelessWidget {
           icon: const Icon(Icons.refresh, size: 18),
           label: const Text('Retry'),
         ),
+      if (onRedo != null)
+        Tooltip(
+          message: 'Redo from start',
+          child: IconButton(
+            onPressed: onRedo,
+            icon: const Icon(Icons.restart_alt, size: 18),
+            color: AppColors.textSecondary,
+          ),
+        ),
+      if (onCancel != null)
+        Tooltip(
+          message: 'Cancel',
+          child: IconButton(
+            onPressed: onCancel,
+            icon: const Icon(Icons.cancel_outlined, size: 18),
+            color: AppColors.failedFg,
+          ),
+        ),
       if (onDeleteHistory != null)
         Tooltip(
           message: 'Delete from history',
@@ -285,6 +330,10 @@ class JobQueueRow extends StatelessWidget {
           ),
         ),
     ];
+
+    if (children.isEmpty) {
+      return const SizedBox.shrink();
+    }
 
     if (compact) {
       return Padding(

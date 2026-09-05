@@ -24,12 +24,13 @@
 import Foundation
 import CryptoKit
 
-public struct CueTranslationCache: Sendable {
+public final class CueTranslationCache: @unchecked Sendable {
     /// cacheKey → translated line.
     private var entries: [String: String]
     private let url: URL
     private let fallbackUrl: URL
     private let videoKey: String
+    private let lock = NSLock()
 
     public init(videoPath: String) {
         self.url = URL(fileURLWithPath: videoPath).deletingLastPathComponent()
@@ -53,31 +54,44 @@ public struct CueTranslationCache: Sendable {
 
     static let fileName = ".autosub-translations.json"
 
-    public var count: Int { entries.count }
+    public var count: Int {
+        lock.lock(); defer { lock.unlock() }
+        return entries.count
+    }
 
-    public func value(for key: String) -> String? { entries[key] }
+    public func value(for key: String) -> String? {
+        lock.lock(); defer { lock.unlock() }
+        return entries[key]
+    }
 
-    public mutating func store(_ translation: String, for key: String) {
+    public func store(_ translation: String, for key: String) {
         guard !translation.isEmpty else { return }
+        lock.lock(); defer { lock.unlock() }
         entries[key] = translation
     }
 
     /// Persist, dropping any entry not in `keep` so the file cannot grow forever
     /// as a title is re-translated with different bibles.
     public func save(keeping keep: Set<String>? = nil) {
+        lock.lock()
         var pruned = entries
         if let keep { pruned = pruned.filter { keep.contains($0.key) } }
+        let currentVideoKey = videoKey
+        let primaryUrl = url
+        let fbUrl = fallbackUrl
+        lock.unlock()
+
         guard !pruned.isEmpty else { return }
-        var all = Self.readAll(url)
-        all[videoKey] = pruned
+        var all = Self.readAll(primaryUrl)
+        all[currentVideoKey] = pruned
         if let data = try? JSONSerialization.data(withJSONObject: all, options: [.sortedKeys]) {
             do {
-                try data.write(to: url, options: .atomic)
+                try data.write(to: primaryUrl, options: .atomic)
             } catch {
-                var fallbackAll = Self.readAll(fallbackUrl)
-                fallbackAll[videoKey] = pruned
+                var fallbackAll = Self.readAll(fbUrl)
+                fallbackAll[currentVideoKey] = pruned
                 if let fbData = try? JSONSerialization.data(withJSONObject: fallbackAll, options: [.sortedKeys]) {
-                    try? fbData.write(to: fallbackUrl, options: .atomic)
+                    try? fbData.write(to: fbUrl, options: .atomic)
                 }
             }
         }

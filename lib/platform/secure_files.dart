@@ -38,6 +38,23 @@ class SecureFiles {
   /// `bookmark` that was persisted from [pickFile] / [pickFolder]. Returns the
   /// resolved filesystem path (begin reading from it), or `null` if the bookmark
   /// could not be resolved (e.g. the file moved/was deleted — re-pick to refresh).
+  /// Open the system save panel and write [contents] where the user chooses.
+  ///
+  /// The panel itself is what grants write access outside the sandbox container,
+  /// so this is the only correct way to export a file. Returns the written path,
+  /// or null if the user cancelled.
+  Future<String?> saveFile({
+    required String suggestedName,
+    required String contents,
+    List<String> allowedExtensions = const [],
+  }) async {
+    return _channel.invokeMethod<String>('saveFile', <String, dynamic>{
+      'suggestedName': suggestedName,
+      'contents': contents,
+      'allowedExtensions': allowedExtensions,
+    });
+  }
+
   Future<String?> resolveBookmark(String bookmark) async {
     final path = await _channel.invokeMethod<String>(
       'resolveBookmark',

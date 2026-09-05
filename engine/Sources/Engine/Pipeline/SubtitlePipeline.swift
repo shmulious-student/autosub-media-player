@@ -352,11 +352,40 @@ public actor SubtitlePipeline {
             }
         }
 
+        let sceneIdByCue = SceneSynopsis.sceneIdByCueIndex(scenes: scenes, cues: sentenceCues)
         let packets = ScenePacketer.packets(
             cues: sentenceCues,
             bindingsByCueIndex: bindingByCue,
-            sceneIdByCueIndex: SceneSynopsis.sceneIdByCueIndex(scenes: scenes, cues: sentenceCues),
+            sceneIdByCueIndex: sceneIdByCue,
             synopsisBySceneId: synopses)
+
+        // 2b. INCREMENTAL CACHE. Each line's key covers exactly what can change its
+        //     translation — its text, the resolved speaker/addressee, the scene
+        //     synopsis, and the genders of the characters THAT LINE mentions. So
+        //     correcting one character in the bible invalidates that character's
+        //     lines and leaves the rest as cache hits, turning a full re-run into a
+        //     few seconds of work. `force` (Re-generate) bypasses the cache entirely.
+        var cueCache = CueTranslationCache(videoPath: videoPath)
+        var keyByCueIndex: [Int: String] = [:]
+        var cachedTranslations: [Int: String] = [:]
+        for cue in sentenceCues {
+            let key = CueTranslationCache.key(
+                source: cue.text, targetLang: targetLang,
+                binding: bindingByCue[cue.index],
+                synopsis: sceneIdByCue[cue.index].flatMap { synopses[$0] },
+                glossary: glossary)
+            keyByCueIndex[cue.index] = key
+            if !force, let hit = cueCache.value(for: key) { cachedTranslations[cue.index] = hit }
+        }
+
+        /// Persist the run's translations under their keys, pruning anything this
+        /// title no longer refers to.
+        func rememberTranslations(_ bySentence: [Int: String]) {
+            for (cueIndex, text) in bySentence {
+                if let key = keyByCueIndex[cueIndex] { cueCache.store(text, for: key) }
+            }
+            cueCache.save(keeping: Set(keyByCueIndex.values))
+        }
 
         // [sentence ordinal: Hebrew] → split each sentence across its source cues.
         func applyAndWrite(_ bySentence: [Int: String]) throws -> String {
@@ -377,8 +406,10 @@ public actor SubtitlePipeline {
             let chat = try await warmChat(in: dir)
             let out = try await ScenePacketTranslator(chat: chat, format: .lean, sourceLang: sourceLang, nameGlossary: nameGlossary).translate(
                 packets: packets, targetLang: targetLang, knownCharacters: glossary,
+                cached: cachedTranslations,
                 onProgress: { frac in onProgress(0.55 + 0.40 * frac, "translate") })
             qaFlags = out.stats.qaFlags
+            rememberTranslations(out.translationsByCueIndex)
             onProgress(0.97, "assemble")
             path = try applyAndWrite(out.translationsByCueIndex)
 
@@ -388,6 +419,7 @@ public actor SubtitlePipeline {
             let fast = try await fastChat()
             let pass1 = try await ScenePacketTranslator(chat: fast, format: .lean, sourceLang: sourceLang, nameGlossary: nameGlossary).translate(
                 packets: packets, targetLang: targetLang, knownCharacters: glossary,
+                cached: cachedTranslations,
                 onProgress: { frac in onProgress(0.45 + 0.25 * frac, "translate") })
             qaFlags = pass1.stats.qaFlags
             let draftPath = try applyAndWrite(pass1.translationsByCueIndex)
@@ -410,6 +442,9 @@ public actor SubtitlePipeline {
                 }
                 onProgress(0.70 + 0.27 * Double(i + 1) / Double(total), "refine")
             }
+            // Cache the UPGRADED text, not the draft: the gender-refined line is
+            // the one worth keeping.
+            rememberTranslations(final)
             onProgress(0.97, "assemble")
             path = try applyAndWrite(final)
         }

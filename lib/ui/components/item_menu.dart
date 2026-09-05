@@ -7,16 +7,83 @@
 //  - Generate        → enqueue the selection (re-generate if already done).
 //  - Play / Open / Remove as applicable.
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 
 import '../../library/library_store.dart';
 import '../../library/processing_manager.dart';
 import '../../metadata/metadata_store.dart';
+import '../../subtitle/srt.dart';
+import '../../subtitle/subtitle_export.dart';
 import '../tokens.dart';
 import 'toast.dart';
 
 /// Show the item menu at [position] (global coordinates) for [entries].
 /// [scopeNoun] is "movie" | "series" | "season" | "episode" for the labels.
+/// Ask which format, then write the sidecar wherever the user chooses.
+///
+/// The translated track lives in a sidecar next to the video under OUR filename;
+/// this is how it gets out of the app and onto a TV stick, a phone, or into
+/// another player. Cues are already final — the only work is formatting.
+Future<void> _exportSubtitles(
+  BuildContext context,
+  LibraryEntry entry,
+  String lang,
+) async {
+  final format = await showDialog<SubtitleExportFormat>(
+    context: context,
+    builder: (ctx) => SimpleDialog(
+      backgroundColor: AppColors.neutral850,
+      title: Text('Export subtitles', style: AppType.subtitle),
+      children: [
+        for (final f in SubtitleExportFormat.values)
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(ctx).pop(f),
+            child: Text(f.label, style: AppType.body),
+          ),
+      ],
+    ),
+  );
+  if (format == null || !context.mounted) return;
+
+  List<SrtCue> cues;
+  try {
+    cues = parseSrt(await File(entry.sidecarPath(lang)).readAsString());
+  } catch (_) {
+    if (context.mounted) {
+      showToast(context, 'Could not read the subtitle file.',
+          variant: ToastVariant.error);
+    }
+    return;
+  }
+  if (cues.isEmpty) {
+    if (context.mounted) {
+      showToast(context, 'That subtitle file has no cues to export.',
+          variant: ToastVariant.attention);
+    }
+    return;
+  }
+
+  try {
+    final written = await exportSubtitles(
+      cues,
+      baseName: p.basenameWithoutExtension(entry.path),
+      lang: lang,
+      format: format,
+      rtl: kRtlLanguages.contains(lang),
+    );
+    if (!context.mounted || written == null) return; // cancelled
+    showToast(context, 'Exported to ${p.basename(written)}',
+        variant: ToastVariant.success);
+  } catch (e) {
+    if (context.mounted) {
+      showToast(context, 'Export failed: $e', variant: ToastVariant.error);
+    }
+  }
+}
+
 Future<void> showItemMenu(
   BuildContext context, {
   required Offset position,
@@ -51,7 +118,16 @@ Future<void> showItemMenu(
       if (onEdit != null && allReady)
         const PopupMenuItem(
             value: 'edit', child: _MenuItem(Icons.edit_outlined, 'Edit subtitles')),
-      if (onPlay != null || onOpen != null || (onEdit != null && allReady))
+      // Export is offered only for a single finished title: a multi-select export
+      // would need a folder picker and a different conversation.
+      if (allReady && entries.length == 1)
+        const PopupMenuItem(
+            value: 'export',
+            child: _MenuItem(Icons.ios_share, 'Export subtitles…')),
+      if (onPlay != null ||
+          onOpen != null ||
+          (onEdit != null && allReady) ||
+          (allReady && entries.length == 1))
         const PopupMenuDivider(),
       PopupMenuItem(
         value: 'next',
@@ -90,6 +166,8 @@ Future<void> showItemMenu(
       onOpen?.call();
     case 'edit':
       onEdit?.call();
+    case 'export':
+      await _exportSubtitles(context, entries.first, lang);
     case 'next':
       if (!manager.engineOnline) {
         showToast(context, 'Engine offline — can\'t reprioritize now.',

@@ -25,6 +25,7 @@ import 'settings/app_settings.dart';
 import 'shell/app_shell.dart';
 import 'ui/tokens.dart';
 import 'wizard/first_run_wizard.dart';
+import 'player/playback_progress.dart';
 
 /// Dev convenience: build with `--dart-define=DEV_FIXTURE=true` to launch straight
 /// into the fixture player.
@@ -55,6 +56,10 @@ Future<void> main() async {
 
   final store = LibraryStore();
   await store.load();
+
+  // Where the viewer stopped watching each title, so reopening resumes.
+  final progress = PlaybackProgressStore();
+  await progress.load();
 
   // TMDB metadata + official posters for the library. The key comes from Settings
   // (stored locally), with a --dart-define=TMDB_API_KEY fallback for dev runs.
@@ -167,6 +172,7 @@ Future<void> main() async {
   runApp(
     AutoSubApp(
       store: store,
+      progress: progress,
       manager: manager,
       metadata: metadata,
       settings: settings,
@@ -179,6 +185,7 @@ class AutoSubApp extends StatefulWidget {
   const AutoSubApp({
     super.key,
     required this.store,
+    required this.progress,
     required this.manager,
     required this.metadata,
     required this.settings,
@@ -186,6 +193,7 @@ class AutoSubApp extends StatefulWidget {
   });
 
   final LibraryStore store;
+  final PlaybackProgressStore progress;
   final ProcessingManager manager;
   final MetadataStore metadata;
   final AppSettings settings;
@@ -252,6 +260,7 @@ class _AutoSubAppState extends State<AutoSubApp> with WidgetsBindingObserver {
           : widget.settings.setupComplete
           ? AppShell(
               store: widget.store,
+              progress: widget.progress,
               manager: widget.manager,
               metadata: widget.metadata,
               settings: widget.settings,

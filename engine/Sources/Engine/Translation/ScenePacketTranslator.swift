@@ -108,6 +108,8 @@ public struct ScenePacketTranslationStats: Sendable {
     public var requests: Int = 0
     public var splits: Int = 0
     public var numberedFallbacks: Int = 0
+    /// Lines served from CueTranslationCache — the work this run did NOT have to do.
+    public var cachedLines: Int = 0
     public var fallbackFailures: Int = 0
     /// `"unverified@<cueIndex>"` for lines that still failed fidelity validation after
     /// a repair re-ask (kept as best candidate, surfaced for QA).
@@ -187,10 +189,16 @@ public struct ScenePacketTranslator: Sendable {
         return "from \(LanguageName.of(s)) \(into)"
     }
 
+    /// - `cached`: cueIndex → an already-correct translation (CueTranslationCache).
+    ///   A packet whose lines are ALL cached costs nothing at all; a packet with
+    ///   some cached lines asks the model only for the rest, handing it the whole
+    ///   scene as (prompt-cached) context. This is what makes correcting one
+    ///   character's gender a seconds-long re-translation instead of a full rerun.
     public func translate(
         packets: [ScenePacket],
         targetLang: String,
         knownCharacters: [String: String] = [:],
+        cached: [Int: String] = [:],
         onProgress: @Sendable (Double) -> Void = { _ in }
     ) async throws -> ScenePacketTranslationOutput {
         var translations: [Int: String] = [:]
@@ -198,10 +206,22 @@ public struct ScenePacketTranslator: Sendable {
         let total = max(packets.count, 1)
 
         for (i, packet) in packets.enumerated() where !packet.isEmpty {
+            // Whole packet already translated under the same inputs — no request.
+            let hits = packet.cueIndices.compactMap { cached[$0] }
+            if hits.count == packet.cueIndices.count {
+                stats.cachedLines += hits.count
+                for (k, cueIndex) in packet.cueIndices.enumerated() {
+                    translations[cueIndex] = hits[k]
+                }
+                onProgress(Double(i + 1) / Double(total))
+                continue
+            }
+            stats.cachedLines += hits.count
             let result = try await translatePacket(
                 packet,
                 targetLang: targetLang,
                 knownCharacters: knownCharacters,
+                cached: cached,
                 stats: &stats
             )
             translations.merge(result) { current, _ in current }
@@ -214,17 +234,18 @@ public struct ScenePacketTranslator: Sendable {
         _ packet: ScenePacket,
         targetLang: String,
         knownCharacters: [String: String],
+        cached: [Int: String] = [:],
         stats: inout ScenePacketTranslationStats
     ) async throws -> [Int: String] {
-        stats.requests += 1
-
         // LEAN: ask for `<n>. <translation>` only — no JSON, no sg/ag echo. The
         // model decodes ~half the tokens of the JSON schema for the same scene.
         if format == .lean {
             return try await translateLeanPacket(
-                packet, targetLang: targetLang, knownCharacters: knownCharacters, stats: &stats)
+                packet, targetLang: targetLang, knownCharacters: knownCharacters,
+                cached: cached, stats: &stats)
         }
 
+        stats.requests += 1
         let prompt = buildPrompt(packet: packet, targetLang: targetLang, knownCharacters: knownCharacters)
         let sourceChars = packet.lines.reduce(0) { $0 + $1.count }
         let maxTokens = max(500, min(1_100, sourceChars + packet.lines.count * 20 + 280))
@@ -265,14 +286,25 @@ public struct ScenePacketTranslator: Sendable {
         _ packet: ScenePacket,
         targetLang: String,
         knownCharacters: [String: String],
+        cached: [Int: String] = [:],
         stats: inout ScenePacketTranslationStats
     ) async throws -> [Int: String] {
-        let prompt = buildNumberedFallbackPrompt(
-            packet: packet, targetLang: targetLang, knownCharacters: knownCharacters)
-        let raw = try await chat.complete(
-            system: nil, user: prompt,
-            maxTokens: Self.leanMaxTokens(packet), temperature: 0.2)
-        var parsed = DictaLMTranslator.parseNumbered(raw, expected: packet.lines.count)
+        // Lines already translated under identical inputs are seeded straight in;
+        // only the rest are asked for. A partially-cached packet therefore takes the
+        // targeted-repair path below rather than a full re-decode of the scene.
+        let seeded = packet.cueIndices.map { cached[$0] ?? "" }
+        var parsed: [String]
+        if seeded.contains(where: { !$0.isEmpty }) {
+            parsed = seeded
+        } else {
+            stats.requests += 1
+            let prompt = buildNumberedFallbackPrompt(
+                packet: packet, targetLang: targetLang, knownCharacters: knownCharacters)
+            let raw = try await chat.complete(
+                system: nil, user: prompt,
+                maxTokens: Self.leanMaxTokens(packet), temperature: 0.2)
+            parsed = DictaLMTranslator.parseNumbered(raw, expected: packet.lines.count)
+        }
         var missing = Self.missingLocals(parsed)
 
         // Pass 1: re-ask only the dropped lines, full scene as (cached) context.

@@ -7,8 +7,10 @@
 // bookmarks) so a sandboxed app keeps access to user-picked files/folders across
 // launches (see lib/platform/secure_files.dart).
 
+import 'dart:async';
 import 'dart:io';
 
+import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
@@ -30,6 +32,7 @@ import 'library_store.dart';
 import 'processing_manager.dart';
 import 'series_detail_page.dart';
 import 'title_detail_page.dart';
+import '../player/playback_progress.dart';
 
 const List<String> _videoExts = [
   'mkv',
@@ -70,12 +73,16 @@ class LibraryPage extends StatefulWidget {
     super.key,
     required this.store,
     required this.manager,
+    required this.progress,
     required this.metadata,
     required this.settings,
   });
 
   final LibraryStore store;
   final ProcessingManager manager;
+
+  /// Resume points, so playback picks up where the viewer left off.
+  final PlaybackProgressStore progress;
   final MetadataStore metadata;
   final AppSettings settings;
 
@@ -100,6 +107,8 @@ class _LibraryPageState extends State<LibraryPage> {
     widget.manager.addListener(_onChange);
     widget.metadata.addListener(_onChange);
     widget.settings.addListener(_onStoreOrSettings);
+    // Resume points change while a film plays; the cards' progress bars follow.
+    widget.progress.addListener(_onChange);
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeSweep());
   }
 
@@ -108,6 +117,7 @@ class _LibraryPageState extends State<LibraryPage> {
     widget.store.removeListener(_onStoreOrSettings);
     widget.manager.removeListener(_onChange);
     widget.metadata.removeListener(_onChange);
+    widget.progress.removeListener(_onChange);
     widget.settings.removeListener(_onStoreOrSettings);
     _searchFocus.dispose();
     _searchController.dispose();
@@ -176,9 +186,22 @@ class _LibraryPageState extends State<LibraryPage> {
         status: st.style,
         statusLabel: st.label,
         progress: st.progress,
+        // How far the viewer got. For a series this is the representative
+        // episode — the one "Play" would open.
+        watchProgress: _watchProgress(g.representative.path),
+        watched: widget.progress.progressFor(g.representative.path)?.isWatched ??
+            false,
       ),
       bucket: _bucketToFilter(st.bucket),
     );
+  }
+
+  /// Resume fraction for a title, or null when it was never watched (so the card
+  /// shows no bar at all rather than an empty one).
+  double? _watchProgress(String path) {
+    final p = widget.progress.progressFor(path);
+    if (p == null || p.isWatched) return null;
+    return p.resumePosition == null ? null : p.fraction;
   }
 
   List<LibraryGroup> get _visibleGroups {
@@ -275,6 +298,7 @@ class _LibraryPageState extends State<LibraryPage> {
           autoPlay: true,
           settings: widget.settings,
           manager: widget.manager,
+          progress: widget.progress,
         ),
       ),
     );
@@ -287,6 +311,7 @@ class _LibraryPageState extends State<LibraryPage> {
           entry: entry,
           store: widget.store,
           manager: widget.manager,
+          progress: widget.progress,
           metadata: widget.metadata,
           settings: widget.settings,
         ),
@@ -303,6 +328,7 @@ class _LibraryPageState extends State<LibraryPage> {
             seriesKey: g.key,
             store: widget.store,
             manager: widget.manager,
+            progress: widget.progress,
             metadata: widget.metadata,
             settings: widget.settings,
           ),
@@ -427,7 +453,14 @@ class _LibraryPageState extends State<LibraryPage> {
         },
         child: Focus(
           autofocus: true,
-          child: Scaffold(
+          child: DropTarget(
+            // Dropping a file on the window is the most common way people open
+            // media on a desktop, and it was the one way this app didn't support.
+            onDragEntered: (_) => setState(() => _dragging = true),
+            onDragExited: (_) => setState(() => _dragging = false),
+            onDragDone: (detail) =>
+                unawaited(_addDropped(detail.files.map((f) => f.path))),
+            child: Scaffold(
             backgroundColor: AppColors.neutral950,
             body: Column(
               children: [
@@ -436,17 +469,88 @@ class _LibraryPageState extends State<LibraryPage> {
                 if (!widget.manager.engineOnline)
                   OfflineBanner(onAction: () => widget.manager.reconnect()),
                 Expanded(
-                  child: isEmptyLibrary
-                      ? _emptyLibrary()
-                      : groups.isEmpty
-                      ? _emptyFilter()
-                      : (_view == LibraryView.grid
-                            ? _grid(groups)
-                            : _listView(groups)),
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: isEmptyLibrary
+                            ? _emptyLibrary()
+                            : groups.isEmpty
+                            ? _emptyFilter()
+                            : (_view == LibraryView.grid
+                                  ? _grid(groups)
+                                  : _listView(groups)),
+                      ),
+                      if (_dragging) Positioned.fill(child: _dropAffordance()),
+                    ],
+                  ),
                 ),
               ],
             ),
+            ),
           ),
+        ),
+      ),
+    );
+  }
+
+  /// Add dropped paths to the library: video files directly, folders scanned.
+  ///
+  /// Dropped files carry no security-scoped bookmark, so under the sandbox this
+  /// access lasts for this launch only — the entry is kept either way, and a
+  /// later re-open through the picker upgrades it with a persistable bookmark.
+  Future<void> _addDropped(Iterable<String> paths) async {
+    setState(() => _dragging = false);
+    final videos = <String>[];
+    for (final path in paths) {
+      if (Directory(path).existsSync()) {
+        videos.addAll(_scan(path));
+      } else if (_videoExts.contains(
+        p.extension(path).replaceFirst('.', '').toLowerCase(),
+      )) {
+        videos.add(path);
+      }
+    }
+    if (videos.isEmpty) {
+      if (mounted) {
+        showToast(
+          context,
+          'Nothing to add — drop a video file or a folder.',
+          variant: ToastVariant.attention,
+        );
+      }
+      return;
+    }
+    LibraryEntry? first;
+    for (final v in videos) {
+      final entry = await widget.store.add(v);
+      first ??= entry;
+    }
+    if (!mounted) return;
+    // One dropped film is an instruction to watch it; a folder is an import.
+    if (videos.length == 1 && first != null) {
+      _play(first);
+    } else {
+      showToast(context, 'Added ${videos.length} titles', variant: ToastVariant.success);
+    }
+  }
+
+  /// True while a drag hovers the window — drives the drop affordance.
+  bool _dragging = false;
+
+  /// Shown over the library while a drag hovers, so it is obvious the window
+  /// will accept the file rather than the drag simply doing nothing.
+  Widget _dropAffordance() {
+    return IgnorePointer(
+      child: Container(
+        color: AppColors.neutral950.withValues(alpha: 0.82),
+        alignment: Alignment.center,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.download, size: 40, color: AppColors.textSecondary),
+            const SizedBox(height: AppSpacing.x3),
+            Text('Drop to add to your library', style: AppType.subtitle),
+          ],
         ),
       ),
     );

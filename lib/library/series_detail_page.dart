@@ -24,6 +24,7 @@ import 'library_grouping.dart';
 import 'library_store.dart';
 import 'processing_manager.dart';
 import 'title_detail_page.dart';
+import '../player/playback_progress.dart';
 
 class SeriesDetailPage extends StatefulWidget {
   const SeriesDetailPage({
@@ -31,6 +32,7 @@ class SeriesDetailPage extends StatefulWidget {
     required this.seriesKey,
     required this.store,
     required this.manager,
+    required this.progress,
     required this.metadata,
     required this.settings,
   });
@@ -38,6 +40,9 @@ class SeriesDetailPage extends StatefulWidget {
   final String seriesKey;
   final LibraryStore store;
   final ProcessingManager manager;
+
+  /// Resume points, so playback picks up where the viewer left off.
+  final PlaybackProgressStore progress;
   final MetadataStore metadata;
   final AppSettings settings;
 
@@ -94,6 +99,7 @@ class _SeriesDetailPageState extends State<SeriesDetailPage> {
           autoPlay: true,
           settings: widget.settings,
           manager: widget.manager,
+          progress: widget.progress,
         ),
       ),
     );
@@ -106,6 +112,7 @@ class _SeriesDetailPageState extends State<SeriesDetailPage> {
           entry: e,
           store: widget.store,
           manager: widget.manager,
+          progress: widget.progress,
           metadata: widget.metadata,
           settings: widget.settings,
         ),

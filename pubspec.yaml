@@ -60,6 +60,7 @@ dependencies:
   http: ^1.2.2
   palette_generator: ^0.3.3+7
   archive: ^4.0.9
+  desktop_drop: ^0.8.4
 
   # Media is opened via the native SecureFiles plugin (macos/Runner/
   # SecureFilesPlugin.swift) which returns security-scoped bookmarks for

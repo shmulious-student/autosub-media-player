@@ -18,6 +18,7 @@ import '../settings/app_settings.dart';
 import '../settings/settings_page.dart';
 import '../ui/components/shortcuts_sheet.dart';
 import '../ui/tokens.dart';
+import '../player/playback_progress.dart';
 
 enum ShellDestination { library, queue, settings }
 
@@ -25,6 +26,7 @@ class AppShell extends StatefulWidget {
   const AppShell({
     super.key,
     required this.store,
+    required this.progress,
     required this.manager,
     required this.metadata,
     required this.settings,
@@ -32,6 +34,7 @@ class AppShell extends StatefulWidget {
   });
 
   final LibraryStore store;
+  final PlaybackProgressStore progress;
   final ProcessingManager manager;
   final MetadataStore metadata;
   final AppSettings settings;
@@ -104,6 +107,7 @@ class _AppShellState extends State<AppShell> {
                   index: _selected.index,
                   children: [
                     LibraryPage(
+                      progress: widget.progress,
                       store: widget.store,
                       manager: widget.manager,
                       metadata: widget.metadata,

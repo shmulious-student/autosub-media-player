@@ -20,6 +20,7 @@ import '../library/processing_manager.dart';
 import '../settings/app_settings.dart';
 import '../ui/components/toast.dart';
 import '../ui/tokens.dart';
+import 'playback_progress.dart';
 import 'preparing_pill.dart';
 import 'subtitle_runway.dart';
 import 'transport_bar.dart';
@@ -36,6 +37,7 @@ class PlayerPage extends StatefulWidget {
     this.loop = false,
     this.settings,
     this.manager,
+    this.progress,
   });
 
   final String? videoPath;
@@ -49,6 +51,10 @@ class PlayerPage extends StatefulWidget {
   /// sidecar appear. Null in previews/tests: playback still works, there is just
   /// nothing preparing subtitles in the background.
   final ProcessingManager? manager;
+
+  /// Where the viewer stopped last time. Null in previews/tests: playback then
+  /// simply always starts from the beginning.
+  final PlaybackProgressStore? progress;
 
   @override
   State<PlayerPage> createState() => _PlayerPageState();
@@ -65,6 +71,14 @@ class _PlayerPageState extends State<PlayerPage> {
   int _appliedRevision = -1;
   bool _announcedSubtitles = false;
   StreamSubscription<Duration>? _durationSub;
+  StreamSubscription<Duration>? _positionSub;
+  Timer? _progressTimer;
+  bool _resumeApplied = false;
+
+  /// Subtitle timing offset in milliseconds. Sidecar and ASR tracks are routinely
+  /// a few hundred ms out against a particular release, and the fix has to be
+  /// available WHILE watching — by the time you notice, you are mid-scene.
+  int _subDelayMs = 0;
   BuildContext? _controlsContext; // captured inside the Video subtree
 
   SubtitleViewConfiguration get _subtitleViewConfiguration {
@@ -111,7 +125,13 @@ class _PlayerPageState extends State<PlayerPage> {
     // "prepared up to here".
     _durationSub = _player.stream.duration.listen((d) {
       _runway?.setMediaDuration(d);
+      _maybeResume(d);
     });
+    _positionSub = _player.stream.position.listen((pos) => _position = pos);
+    // Record every 10s rather than on every position tick: the store debounces
+    // its writes anyway, and this keeps the resume point fresh if the app is
+    // force-quit.
+    _progressTimer = Timer.periodic(const Duration(seconds: 10), (_) => _recordProgress());
 
     await _applyRunwaySubtitle();
     // Only now, with the picture already up, ask the engine to prepare this title
@@ -119,6 +139,68 @@ class _PlayerPageState extends State<PlayerPage> {
     if (_runway?.isComplete != true) {
       unawaited(_runway?.requestPreparation());
     }
+  }
+
+  Duration _position = Duration.zero;
+
+  /// Seek to the saved position once the duration is known (a resume point is
+  /// meaningless until we can tell it from the end of the film).
+  void _maybeResume(Duration duration) {
+    if (_resumeApplied || duration <= Duration.zero) return;
+    final path = widget.videoPath;
+    final store = widget.progress;
+    if (path == null || store == null) return;
+    _resumeApplied = true;
+
+    final resume = store.progressFor(path)?.resumePosition;
+    if (resume == null || resume >= duration) return;
+    unawaited(_player.seek(resume));
+    if (!mounted) return;
+    showToast(
+      context,
+      'Resumed from ${_clock(resume)}',
+      actionLabel: 'Start over',
+      onAction: () {
+        unawaited(_player.seek(Duration.zero));
+        unawaited(store.clearFor(path));
+      },
+    );
+  }
+
+  static String _clock(Duration d) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+    final s = d.inSeconds.remainder(60);
+    return h > 0 ? '$h:${two(m)}:${two(s)}' : '$m:${two(s)}';
+  }
+
+  void _recordProgress() {
+    final path = widget.videoPath;
+    final store = widget.progress;
+    if (path == null || store == null || !_resumeApplied) return;
+    store.record(path, _position, _player.state.duration);
+  }
+
+  /// Nudge the subtitle timing. mpv owns `sub-delay` (in seconds, positive = the
+  /// subtitle appears later), so we push it straight through rather than
+  /// rewriting the cue file.
+  Future<void> _nudgeSubtitleDelay(int deltaMs) async {
+    final next = (_subDelayMs + deltaMs).clamp(-30000, 30000);
+    if (next == _subDelayMs) return;
+    _subDelayMs = next;
+    final platform = _player.platform;
+    if (platform is NativePlayer) {
+      await platform.setProperty('sub-delay', (next / 1000).toStringAsFixed(3));
+    }
+    if (!mounted) return;
+    setState(() {});
+    showToast(
+      context,
+      next == 0
+          ? 'Subtitle delay reset'
+          : 'Subtitle delay ${next > 0 ? '+' : ''}$next ms',
+    );
   }
 
   void _startRunway() {
@@ -216,7 +298,11 @@ class _PlayerPageState extends State<PlayerPage> {
   @override
   void dispose() {
     widget.settings?.removeListener(_onSettingsChanged);
+    _recordProgress();
+    unawaited(widget.progress?.flush());
+    _progressTimer?.cancel();
     _durationSub?.cancel();
+    _positionSub?.cancel();
     _runway?.removeListener(_onRunwayChanged);
     _runway?.dispose();
     _player.dispose();
@@ -278,6 +364,13 @@ class _PlayerPageState extends State<PlayerPage> {
                     _toggleSubtitles,
                 const SingleActivator(LogicalKeyboardKey.keyF):
                     _toggleFullscreen,
+                // , / . nudge subtitle timing by 100 ms (mpv's own convention).
+                const SingleActivator(LogicalKeyboardKey.comma): () =>
+                    unawaited(_nudgeSubtitleDelay(-100)),
+                const SingleActivator(LogicalKeyboardKey.period): () =>
+                    unawaited(_nudgeSubtitleDelay(100)),
+                const SingleActivator(LogicalKeyboardKey.slash): () =>
+                    unawaited(_nudgeSubtitleDelay(-_subDelayMs)),
               },
               child: Focus(
                 autofocus: true,

@@ -1,5 +1,6 @@
 import Cocoa
 import FlutterMacOS
+import UniformTypeIdentifiers
 
 /// Native bridge for production-correct, sandbox-safe file access.
 ///
@@ -13,6 +14,8 @@ import FlutterMacOS
 ///   - `pickFile`        -> { "path": String, "bookmark": String(base64) } | nil
 ///   - `pickFolder`      -> { "path": String, "bookmark": String(base64) } | nil
 ///   - `resolveBookmark` (arg: { "bookmark": String(base64) }) -> String(path) | nil
+///   - `saveFile` (args: { "suggestedName": String, "contents": String,
+///                         "allowedExtensions": [String]? }) -> String(path) | nil
 final class SecureFilesPlugin: NSObject {
     static let channelName = "autosub/secure_files"
 
@@ -35,6 +38,18 @@ final class SecureFilesPlugin: NSObject {
             pick(directories: false, result: result)
         case "pickFolder":
             pick(directories: true, result: result)
+        case "saveFile":
+            guard let args = call.arguments as? [String: Any],
+                  let name = args["suggestedName"] as? String,
+                  let contents = args["contents"] as? String else {
+                result(FlutterError(code: "bad_args",
+                                    message: "saveFile requires `suggestedName` and `contents`",
+                                    details: nil))
+                return
+            }
+            save(suggestedName: name, contents: contents,
+                 allowedExtensions: args["allowedExtensions"] as? [String],
+                 result: result)
         case "resolveBookmark":
             guard let args = call.arguments as? [String: Any],
                   let bookmark = args["bookmark"] as? String else {
@@ -76,6 +91,37 @@ final class SecureFilesPlugin: NSObject {
         } catch {
             result(FlutterError(code: "bookmark_failed",
                                 message: "Could not create bookmark: \(error.localizedDescription)",
+                                details: nil))
+        }
+    }
+
+    /// Open an NSSavePanel and write `contents` where the user chooses.
+    ///
+    /// The save panel is the ONLY sandbox-correct way to write outside our own
+    /// container: the user's choice is what grants us write access, and it is
+    /// granted for that one URL. No bookmark is minted — an export is a one-shot
+    /// write, not something we ever need to reopen.
+    private func save(suggestedName: String, contents: String,
+                      allowedExtensions: [String]?, result: @escaping FlutterResult) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = suggestedName
+        panel.canCreateDirectories = true
+        if let exts = allowedExtensions, !exts.isEmpty {
+            panel.allowedContentTypes = exts.compactMap { UTType(filenameExtension: $0) }
+        }
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            result(nil)   // cancelled — not an error
+            return
+        }
+        do {
+            // UTF-8 with a BOM-free encoding: what every subtitle player expects.
+            try contents.write(to: url, atomically: true, encoding: .utf8)
+            result(url.path)
+        } catch {
+            result(FlutterError(code: "write_failed",
+                                message: "Could not write \(url.lastPathComponent): "
+                                    + error.localizedDescription,
                                 details: nil))
         }
     }

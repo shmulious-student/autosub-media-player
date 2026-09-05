@@ -29,6 +29,8 @@ const _player = [
   _Shortcut(['S'], 'Toggle subtitles'),
   _Shortcut(['F'], 'Toggle fullscreen'),
   _Shortcut(['Esc'], 'Exit fullscreen'),
+  _Shortcut([',', '.'], 'Subtitle delay ∓100ms'),
+  _Shortcut(['/'], 'Reset subtitle delay'),
 ];
 
 const _editing = [

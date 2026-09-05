@@ -31,6 +31,7 @@ import '../ui/duration_format.dart';
 import '../ui/tokens.dart';
 import 'library_store.dart';
 import 'processing_manager.dart';
+import '../player/playback_progress.dart';
 
 class TitleDetailPage extends StatefulWidget {
   const TitleDetailPage({
@@ -38,6 +39,7 @@ class TitleDetailPage extends StatefulWidget {
     required this.entry,
     required this.store,
     required this.manager,
+    required this.progress,
     required this.metadata,
     required this.settings,
   });
@@ -45,6 +47,9 @@ class TitleDetailPage extends StatefulWidget {
   final LibraryEntry entry;
   final LibraryStore store;
   final ProcessingManager manager;
+
+  /// Resume points, so playback picks up where the viewer left off.
+  final PlaybackProgressStore progress;
   final MetadataStore metadata;
   final AppSettings settings;
 
@@ -125,6 +130,7 @@ class _TitleDetailPageState extends State<TitleDetailPage> {
           autoPlay: true,
           settings: widget.settings,
           manager: widget.manager,
+          progress: widget.progress,
         ),
       ),
     );

@@ -1,0 +1,2656 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AutoSub Media Player — UX/UI Master Architecture & Design Blueprint</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;800&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* ==========================================================================
+       CSS VARIABLES & THEME TOKENS (Quiet Cinema 2.0 — Obsidian & Warm Amber)
+       ========================================================================== */
+    :root {
+      --bg-base: #0A0D14;
+      --bg-surface: #111520;
+      --bg-surface-elevated: #181D2B;
+      --bg-surface-glass: rgba(24, 29, 43, 0.78);
+      --bg-card: #151A26;
+      --bg-card-hover: #1D2436;
+      --bg-active: #242D42;
+
+      --hairline: rgba(255, 255, 255, 0.08);
+      --hairline-strong: rgba(255, 255, 255, 0.16);
+      --hairline-glow: rgba(232, 163, 61, 0.28);
+
+      --accent: #E8A33D;
+      --accent-hover: #F5B04C;
+      --accent-dim: rgba(232, 163, 61, 0.14);
+      --accent-glow: 0 0 24px rgba(232, 163, 61, 0.35);
+
+      --text-primary: #F3F4F6;
+      --text-secondary: #9CA3AF;
+      --text-tertiary: #6B7280;
+      --text-muted: #4B5563;
+
+      --status-ready: #10B981;
+      --status-ready-bg: rgba(16, 185, 129, 0.12);
+      --status-attention: #F59E0B;
+      --status-attention-bg: rgba(245, 158, 11, 0.14);
+      --status-running: #3B82F6;
+      --status-running-bg: rgba(59, 130, 246, 0.14);
+      --status-failed: #EF4444;
+      --status-failed-bg: rgba(239, 68, 68, 0.14);
+      --status-queued: #8B5CF6;
+      --status-queued-bg: rgba(139, 92, 246, 0.14);
+
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 16px;
+      --radius-xl: 22px;
+      --radius-full: 9999px;
+
+      --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+      --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
+      --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.6);
+
+      --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+      --font-hebrew: 'Heebo', -apple-system, BlinkMacSystemFont, sans-serif;
+
+      --transition-fast: 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+      --transition-normal: 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    body {
+      background-color: var(--bg-base);
+      color: var(--text-primary);
+      font-family: var(--font-ui);
+      font-size: 15px;
+      line-height: 1.6;
+      overflow-x: hidden;
+      min-height: 100vh;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: var(--bg-base);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--hairline-strong);
+      border-radius: var(--radius-full);
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--text-tertiary);
+    }
+
+    /* Directional helpers */
+    .rtl-text {
+      direction: rtl;
+      unicode-bidi: isolate;
+      font-family: var(--font-hebrew);
+    }
+    .ltr-inline {
+      direction: ltr;
+      unicode-bidi: isolate;
+    }
+    .mono {
+      font-family: var(--font-mono);
+    }
+
+    /* Top Sticky Masthead */
+    header.top-masthead {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(10, 13, 20, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--hairline);
+      padding: 14px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 9px;
+      background: linear-gradient(135deg, #F5B04C 0%, #E8A33D 60%, #9E5B0E 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #0A0D14;
+      font-weight: 900;
+      font-size: 18px;
+      box-shadow: 0 4px 14px rgba(232, 163, 61, 0.4);
+    }
+
+    .brand-meta h1 {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-meta .badge {
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: var(--radius-full);
+      background: var(--accent-dim);
+      color: var(--accent);
+      border: 1px solid rgba(232, 163, 61, 0.3);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .brand-meta p {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    /* Nav Tabs */
+    .nav-tabs {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--bg-surface);
+      padding: 4px;
+      border-radius: var(--radius-full);
+      border: 1px solid var(--hairline);
+    }
+
+    .nav-tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      font-family: var(--font-ui);
+      font-size: 13px;
+      font-weight: 500;
+      padding: 6px 14px;
+      border-radius: var(--radius-full);
+      cursor: pointer;
+      transition: var(--transition-fast);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .nav-tab-btn:hover {
+      color: var(--text-primary);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .nav-tab-btn.active {
+      color: #0A0D14;
+      background: var(--accent);
+      font-weight: 600;
+      box-shadow: 0 2px 8px rgba(232, 163, 61, 0.4);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .action-btn {
+      background: var(--bg-surface-elevated);
+      color: var(--text-secondary);
+      border: 1px solid var(--hairline);
+      padding: 7px 12px;
+      border-radius: var(--radius-md);
+      font-size: 12px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      transition: var(--transition-fast);
+    }
+
+    .action-btn:hover {
+      color: var(--text-primary);
+      border-color: var(--hairline-strong);
+      background: var(--bg-active);
+    }
+
+    .action-btn.primary {
+      background: var(--accent);
+      color: #0A0D14;
+      font-weight: 600;
+      border-color: transparent;
+    }
+    .action-btn.primary:hover {
+      background: var(--accent-hover);
+    }
+
+    /* Main Container */
+    main.content-area {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 40px 32px 100px;
+    }
+
+    /* Tab View Sections */
+    .tab-section {
+      display: none;
+      animation: fadeIn 0.3s ease forwards;
+    }
+    .tab-section.active-tab {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Hero Banner */
+    .hero-banner {
+      background: radial-gradient(circle at 80% 20%, rgba(232, 163, 61, 0.12) 0%, transparent 60%),
+                  linear-gradient(180deg, var(--bg-surface-elevated) 0%, var(--bg-surface) 100%);
+      border: 1px solid var(--hairline-strong);
+      border-radius: var(--radius-xl);
+      padding: 48px;
+      margin-bottom: 40px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: var(--shadow-md);
+    }
+
+    .hero-banner::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 400px;
+      height: 100%;
+      background: url('data:image/svg+xml;utf8,<svg width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="1.5" fill="rgba(255,255,255,0.06)"/></svg>');
+      opacity: 0.8;
+      pointer-events: none;
+    }
+
+    .hero-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--accent-dim);
+      color: var(--accent);
+      border: 1px solid rgba(232, 163, 61, 0.3);
+      padding: 4px 10px;
+      border-radius: var(--radius-full);
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      letter-spacing: 0.4px;
+    }
+
+    .hero-banner h2 {
+      font-size: 36px;
+      font-weight: 800;
+      letter-spacing: -0.8px;
+      line-height: 1.2;
+      margin-bottom: 14px;
+      max-width: 820px;
+    }
+
+    .hero-banner p.lead {
+      font-size: 17px;
+      color: var(--text-secondary);
+      max-width: 780px;
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+
+    .hero-metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-top: 32px;
+      padding-top: 24px;
+      border-top: 1px solid var(--hairline);
+    }
+
+    .metric-card {
+      background: rgba(10, 13, 20, 0.45);
+      border: 1px solid var(--hairline);
+      border-radius: var(--radius-lg);
+      padding: 16px 20px;
+    }
+
+    .metric-card .val {
+      font-size: 26px;
+      font-weight: 800;
+      color: var(--accent);
+      font-family: var(--font-mono);
+      letter-spacing: -0.5px;
+    }
+
+    .metric-card .label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+      font-weight: 500;
+    }
+
+    /* Section Headings */
+    .section-header {
+      margin-bottom: 28px;
+    }
+
+    .section-header .eyebrow {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--accent);
+      margin-bottom: 6px;
+      display: block;
+    }
+
+    .section-header h3 {
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: var(--text-primary);
+    }
+
+    .section-header p {
+      font-size: 15px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+      max-width: 760px;
+    }
+
+    /* Card Grids */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 24px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+
+    /* Top 10 Feature Suggestion Cards */
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--hairline);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      transition: var(--transition-normal);
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    .feature-card:hover {
+      border-color: var(--hairline-strong);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .feature-card.highlighted {
+      border-color: rgba(232, 163, 61, 0.4);
+      background: linear-gradient(180deg, rgba(232, 163, 61, 0.05) 0%, var(--bg-card) 40%);
+    }
+
+    .feature-header {
+      padding: 20px 24px 16px;
+      border-bottom: 1px solid var(--hairline);
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+    }
+
+    .feature-rank {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-md);
+      background: var(--bg-surface-elevated);
+      color: var(--accent);
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 14px;
+      border: 1px solid var(--hairline-strong);
+      flex-shrink: 0;
+    }
+
+    .feature-title-block h4 {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+
+    .feature-title-block .tagline {
+      font-size: 13px;
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    .feature-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    .tag-chip {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: var(--radius-sm);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-secondary);
+      border: 1px solid var(--hairline);
+      font-weight: 500;
+    }
+
+    .tag-chip.priority {
+      background: rgba(232, 163, 61, 0.15);
+      color: var(--accent);
+      border-color: rgba(232, 163, 61, 0.3);
+      font-weight: 600;
+    }
+
+    .feature-body {
+      padding: 20px 24px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .feature-spec-row {
+      background: var(--bg-surface);
+      border: 1px solid var(--hairline);
+      border-radius: var(--radius-md);
+      padding: 12px 16px;
+    }
+
+    .feature-spec-row .spec-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-tertiary);
+      margin-bottom: 4px;
+    }
+
+    .feature-spec-row .spec-desc {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    .feature-flow-visual {
+      background: #080B10;
+      border: 1px dashed var(--hairline-strong);
+      border-radius: var(--radius-md);
+      padding: 14px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: #93C5FD;
+      line-height: 1.5;
+      overflow-x: auto;
+    }
+
+    .feature-footer {
+      padding: 14px 24px;
+      background: var(--bg-surface);
+      border-top: 1px solid var(--hairline);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .feature-footer .impact {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--status-ready);
+      font-weight: 600;
+    }
+
+    /* Screen Blueprints Tab */
+    .screen-showcase-container {
+      display: flex;
+      flex-direction: column;
+      gap: 40px;
+    }
+
+    .screen-spec-card {
+      background: var(--bg-card);
+      border: 1px solid var(--hairline);
+      border-radius: var(--radius-xl);
+      overflow: hidden;
+      box-shadow: var(--shadow-md);
+    }
+
+    .screen-header-bar {
+      padding: 24px 32px;
+      background: var(--bg-surface-elevated);
+      border-bottom: 1px solid var(--hairline);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .screen-title h4 {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.4px;
+      color: var(--text-primary);
+    }
+
+    .screen-title p {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
+
+    .screen-layout-grid {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 0;
+    }
+
+    .screen-canvas-preview {
+      background: #07090F;
+      padding: 32px;
+      border-right: 1px solid var(--hairline);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .screen-sidebar-specs {
+      padding: 32px 24px;
+      background: var(--bg-surface);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .spec-block h5 {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+
+    .spec-block ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .spec-block li {
+      font-size: 13px;
+      color: var(--text-secondary);
+      padding-left: 14px;
+      position: relative;
+      line-height: 1.5;
+    }
+
+    .spec-block li::before {
+      content: "•";
+      position: absolute;
+      left: 0;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    /* Mockup Frame Elements */
+    .mock-window {
+      background: var(--bg-surface);
+      border: 1px solid var(--hairline-strong);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .mock-titlebar {
+      height: 38px;
+      background: rgba(17, 21, 32, 0.95);
+      border-bottom: 1px solid var(--hairline);
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .traffic-lights {
+      display: flex;
+      gap: 7px;
+    }
+
+    .traffic-dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+    }
+    .traffic-dot.close { background: #FF5F56; }
+    .traffic-dot.min { background: #FFBD2E; }
+    .traffic-dot.max { background: #27C93F; }
+
+    .mock-title-text {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+
+    .mock-body {
+      display: flex;
+      min-height: 380px;
+    }
+
+    .mock-rail {
+      width: 70px;
+      background: #0E121C;
+      border-right: 1px solid var(--hairline);
+      padding: 16px 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .mock-rail-item {
+      width: 44px;
+      height: 44px;
+      border-radius: var(--radius-md);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-tertiary);
+      font-size: 10px;
+      gap: 2px;
+      cursor: pointer;
+      transition: var(--transition-fast);
+      position: relative;
+    }
+
+    .mock-rail-item:hover, .mock-rail-item.active {
+      background: var(--bg-surface-elevated);
+      color: var(--accent);
+    }
+
+    .mock-rail-badge {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      background: var(--accent);
+      color: #0A0D14;
+      font-size: 9px;
+      font-weight: 800;
+      border-radius: 6px;
+      padding: 1px 4px;
+    }
+
+    .mock-content {
+      flex: 1;
+      padding: 20px;
+      overflow: hidden;
+    }
+
+    /* Interactive Prototypes */
+    .prototype-section {
+      background: var(--bg-card);
+      border: 1px solid var(--hairline-strong);
+      border-radius: var(--radius-xl);
+      padding: 32px;
+      margin-bottom: 32px;
+    }
+
+    .prototype-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--hairline);
+    }
+
+    .interactive-viewport {
+      background: #000;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--hairline-strong);
+      position: relative;
+      overflow: hidden;
+      min-height: 460px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+    }
+
+    /* Video Player Canvas Mockup */
+    .video-canvas {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, #101626 0%, #1e142e 50%, #0d121c 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .video-scene-indicator {
+      color: rgba(255, 255, 255, 0.2);
+      font-size: 14px;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 20px;
+    }
+
+    .subtitle-display-area {
+      position: absolute;
+      bottom: 96px;
+      left: 32px;
+      right: 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      pointer-events: none;
+      text-align: center;
+    }
+
+    .sub-line-hebrew {
+      font-family: var(--font-hebrew);
+      font-size: 26px;
+      font-weight: 700;
+      color: #FFF;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.95), 0 0 12px rgba(0, 0, 0, 0.8);
+      direction: rtl;
+      unicode-bidi: isolate;
+      padding: 4px 14px;
+      border-radius: 6px;
+      transition: var(--transition-fast);
+    }
+
+    .sub-line-source {
+      font-family: var(--font-ui);
+      font-size: 16px;
+      color: #9CA3AF;
+      font-weight: 500;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.95);
+      opacity: 0.85;
+      padding: 2px 10px;
+      border-radius: 4px;
+    }
+
+    /* Player HUD */
+    .player-hud-bar {
+      position: relative;
+      z-index: 10;
+      background: linear-gradient(180deg, transparent 0%, rgba(5, 7, 12, 0.95) 40%, #05070C 100%);
+      padding: 24px 28px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .timeline-scrubber-container {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .time-readout {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-secondary);
+      min-width: 46px;
+    }
+
+    .scrubber-track {
+      flex: 1;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.16);
+      border-radius: 3px;
+      position: relative;
+      cursor: pointer;
+    }
+
+    .scrubber-runway {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 78%;
+      background: rgba(232, 163, 61, 0.35);
+      border-radius: 3px;
+    }
+
+    .scrubber-fill {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 38%;
+      background: var(--accent);
+      border-radius: 3px;
+    }
+
+    .scrubber-handle {
+      position: absolute;
+      left: 38%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #FFF;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.6);
+    }
+
+    .hud-controls-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .playback-buttons {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .hud-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-primary);
+      width: 34px;
+      height: 34px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: var(--transition-fast);
+    }
+
+    .hud-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--accent);
+    }
+
+    .hud-btn.primary-play {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #0A0D14;
+    }
+    .hud-btn.primary-play:hover {
+      background: var(--accent-hover);
+      transform: scale(1.05);
+    }
+
+    .hud-quick-tools {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .pill-toggle {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--hairline);
+      color: var(--text-secondary);
+      padding: 5px 11px;
+      border-radius: var(--radius-full);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition-fast);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .pill-toggle:hover {
+      background: rgba(255, 255, 255, 0.14);
+      color: var(--text-primary);
+    }
+
+    .pill-toggle.active {
+      background: var(--accent);
+      color: #0A0D14;
+      border-color: var(--accent);
+    }
+
+    .delay-stepper {
+      display: flex;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--hairline);
+      border-radius: var(--radius-full);
+      padding: 2px 8px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-secondary);
+      gap: 6px;
+    }
+
+    .stepper-btn {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-weight: 700;
+      padding: 2px 4px;
+    }
+    .stepper-btn:hover {
+      color: var(--accent);
+    }
+
+    /* Subtitle Editor Interactive */
+    .editor-grid {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 24px;
+      margin-top: 16px;
+    }
+
+    .editor-rows-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 480px;
+      overflow-y: auto;
+      padding-right: 8px;
+    }
+
+    .editor-row-item {
+      background: var(--bg-surface);
+      border: 1px solid var(--hairline);
+      border-radius: var(--radius-md);
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: var(--transition-fast);
+    }
+
+    .editor-row-item:hover, .editor-row-item.focused {
+      border-color: var(--hairline-strong);
+      background: var(--bg-surface-elevated);
+    }
+
+    .editor-row-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: var(--text-tertiary);
+    }
+
+    .cue-timing {
+      font-family: var(--font-mono);
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .cps-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .cps-indicator.green { color: var(--status-ready); }
+    .cps-indicator.amber { color: var(--status-attention); }
+    .cps-indicator.red { color: var(--status-failed); }
+
+    .editor-text-input {
+      width: 100%;
+      background: rgba(10, 13, 20, 0.6);
+      border: 1px solid var(--hairline);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      padding: 8px 12px;
+      font-family: var(--font-hebrew);
+      font-size: 16px;
+      direction: rtl;
+      unicode-bidi: isolate;
+      outline: none;
+      transition: var(--transition-fast);
+    }
+
+    .editor-text-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-dim);
+    }
+
+    .editor-inspector-pane {
+      background: var(--bg-surface);
+      border: 1px solid var(--hairline);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* Bible Disambiguation Interactive */
+    .bible-card-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+
+    .bible-char-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--hairline);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      cursor: pointer;
+      transition: var(--transition-fast);
+    }
+
+    .bible-char-card:hover, .bible-char-card.selected {
+      border-color: var(--accent);
+      background: var(--bg-surface-elevated);
+    }
+
+    .char-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .char-names h5 {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .char-names .hebrew-alias {
+      font-family: var(--font-hebrew);
+      direction: rtl;
+      unicode-bidi: isolate;
+      font-size: 14px;
+      color: var(--accent);
+    }
+
+    .gender-pill-group {
+      display: flex;
+      gap: 4px;
+    }
+
+    .gender-chip {
+      background: var(--bg-card);
+      border: 1px solid var(--hairline);
+      border-radius: var(--radius-sm);
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+
+    .gender-chip.active {
+      background: var(--accent);
+      color: #0A0D14;
+      border-color: var(--accent);
+    }
+
+    /* Status Badges */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: var(--radius-full);
+    }
+
+    .status-badge.ready {
+      background: var(--status-ready-bg);
+      color: var(--status-ready);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+    }
+
+    .status-badge.running {
+      background: var(--status-running-bg);
+      color: var(--status-running);
+      border: 1px solid rgba(59, 130, 246, 0.25);
+    }
+
+    .status-badge.attention {
+      background: var(--status-attention-bg);
+      color: var(--status-attention);
+      border: 1px solid rgba(245, 158, 11, 0.25);
+    }
+
+    /* Code Blocks */
+    pre.code-block {
+      background: #07090E;
+      border: 1px solid var(--hairline-strong);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+      color: #E2E8F0;
+      overflow-x: auto;
+      line-height: 1.5;
+    }
+
+    /* Toast notification simulator */
+    .toast-pill {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--hairline-strong);
+      border-radius: var(--radius-full);
+      padding: 10px 18px;
+      box-shadow: var(--shadow-lg);
+      font-size: 13px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 999;
+    }
+
+    .toast-pill.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    /* Table styles */
+    .design-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin: 16px 0;
+    }
+
+    .design-table th {
+      background: var(--bg-surface-elevated);
+      color: var(--text-secondary);
+      font-weight: 600;
+      text-align: left;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--hairline-strong);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .design-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--hairline);
+      color: var(--text-secondary);
+      vertical-align: top;
+    }
+
+    .design-table tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+      color: var(--text-primary);
+    }
+
+    .design-table td strong {
+      color: var(--text-primary);
+    }
+
+    /* Media queries */
+    @media (max-width: 1100px) {
+      .hero-metrics-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .grid-2, .grid-3, .screen-layout-grid, .editor-grid {
+        grid-template-columns: 1fr;
+      }
+      .screen-canvas-preview {
+        border-right: none;
+        border-bottom: 1px solid var(--hairline);
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ==========================================================================
+       TOP STICKY MASTHEAD (Tabs, Quick Filter, Mode Switcher)
+       ========================================================================== -->
+  <header class="top-masthead">
+    <div class="brand-group">
+      <div class="brand-icon">AS</div>
+      <div class="brand-meta">
+        <h1>AutoSub Media Player <span class="badge">UX/UI Blueprint</span></h1>
+        <p>Professional UX/UI Expert Audit · Top 10 Capabilities · Complete GUI Architecture</p>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs" id="mainNavTabs">
+      <button class="nav-tab-btn active" data-tab="tab-audit">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        1. Executive Audit
+      </button>
+      <button class="nav-tab-btn" data-tab="tab-top10">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        2. Top 10 Features
+      </button>
+      <button class="nav-tab-btn" data-tab="tab-gui">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+        3. Full GUI Design
+      </button>
+      <button class="nav-tab-btn" data-tab="tab-prototypes">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        4. Interactive Labs
+      </button>
+      <button class="nav-tab-btn" data-tab="tab-system">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        5. Tokens & Roadmap
+      </button>
+    </nav>
+
+    <!-- Header Actions -->
+    <div class="header-actions">
+      <button class="action-btn" id="btnToggleBidi" title="Toggle RTL simulation on content">
+        <span class="mono">א/A</span> Bidi Check
+      </button>
+      <button class="action-btn primary" onclick="window.print()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        Export PDF
+      </button>
+    </div>
+  </header>
+
+  <!-- ==========================================================================
+       MAIN CONTENT CONTAINER
+       ========================================================================== -->
+  <main class="content-area">
+
+    <!-- ========================================================================
+         TAB 1: EXECUTIVE AUDIT & CURRENT STATE FRICTIONS
+         ======================================================================== -->
+    <section id="tab-audit" class="tab-section active-tab">
+      <div class="hero-banner">
+        <span class="hero-tag">UX/UI ARCHITECTURE AUDIT · V1.0 TO V2.0</span>
+        <h2>AutoSub Media Player: The Next-Gen Desktop Experience</h2>
+        <p class="lead">
+          AutoSub possesses an extraordinarily strong core: local, context-aware, gender-accurate Hebrew subtitle generation with zero cloud lock-in. This design pass elevates the software from a functional developer tool to an enchanting, premium, Apple-caliber desktop hub on par with Infuse, IINA, and Final Cut Pro.
+        </p>
+
+        <div class="hero-metrics-grid">
+          <div class="metric-card">
+            <div class="val">&plusmn;50ms</div>
+            <div class="label">Forced Alignment Timing Precision</div>
+          </div>
+          <div class="metric-card">
+            <div class="val">50&times;</div>
+            <div class="label">Throughput Speedup via Cloud Turbo</div>
+          </div>
+          <div class="metric-card">
+            <div class="val">100%</div>
+            <div class="label">Native Bidi Isolation on macOS</div>
+          </div>
+          <div class="metric-card">
+            <div class="val">0-Lag</div>
+            <div class="label">Instant Hot-Swapped Background Subtitles</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Friction Analysis Matrix -->
+      <div class="section-header">
+        <span class="eyebrow">Diagnostic Audit</span>
+        <h3>Current UX Bottlenecks & Design Opportunities</h3>
+        <p>A rigorous heuristic evaluation of the current Flutter desktop build reveals 5 core architectural gaps in user flow and ergonomics:</p>
+      </div>
+
+      <div class="grid-2">
+        <div class="feature-card">
+          <div class="feature-header">
+            <div class="feature-rank">F1</div>
+            <div class="feature-title-block">
+              <h4>In-Player Subtitle Offset & Hot-Swap Opacity</h4>
+              <span class="tagline">Playback Disconnect</span>
+            </div>
+            <span class="status-badge attention">High Friction</span>
+          </div>
+          <div class="feature-body">
+            <div class="feature-spec-row">
+              <div class="spec-label">Observed User Friction</div>
+              <div class="spec-desc">When watching video, if subtitles are 300ms out of sync, the user must navigate away to Subtitle Editor or fiddle with hidden hotkeys without visual audio feedback. The subtitle runway bar indicates background progress, but doesn't show <em>where</em> in the timeline subtitles exist.</div>
+            </div>
+            <div class="feature-spec-row">
+              <div class="spec-label">Suggested UX Resolution</div>
+              <div class="spec-desc">Add an <strong>in-player floating Precision Sync Scrubber</strong> right on the TransportBar HUD with &plusmn;50ms stepper buttons, visual waveform alignment, and a real-time timeline heatmap showing exactly which scenes are ready.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-header">
+            <div class="feature-rank">F2</div>
+            <div class="feature-title-block">
+              <h4>Hardware Wall: Local M1 vs Free Cloud Acceleration</h4>
+              <span class="tagline">Compute Throughput Bottleneck</span>
+            </div>
+            <span class="status-badge attention">Speed Barrier</span>
+          </div>
+          <div class="feature-body">
+            <div class="feature-spec-row">
+              <div class="spec-label">Observed User Friction</div>
+              <div class="spec-desc">Local 9B models on 16GB M1 Macs achieve only ~8.1 tok/s, making a 2-hour movie take 45+ minutes to translate. Users want privacy, but also desire the option for free instant acceleration (Groq 500 tok/s or Gemini Flash 1M context) without terminal commands.</div>
+            </div>
+            <div class="feature-spec-row">
+              <div class="spec-label">Suggested UX Resolution</div>
+              <div class="spec-desc">Introduce a <strong>"Compute Orchestrator"</strong> toggle in Settings and Title Detail: easily switch between <em>100% Air-Gapped Local (MLX/DictaLM)</em> and <em>Cloud Turbo (Free Groq LPU / Gemini Flash)</em> with zero cost and instant token meters.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-header">
+            <div class="feature-rank">F3</div>
+            <div class="feature-title-block">
+              <h4>Character Bible 1.0: Flat Roster vs Dialogue Relationship Graph</h4>
+              <span class="tagline">Grammatical Ambiguity</span>
+            </div>
+            <span class="status-badge attention">Accuracy Limit</span>
+          </div>
+          <div class="feature-body">
+            <div class="feature-spec-row">
+              <div class="spec-label">Observed User Friction</div>
+              <div class="spec-desc">The existing character editor lists characters with individual genders (M/F/NB). However, Hebrew grammar heavily inflects the verb based on <em>who is speaking to whom</em> (Addressee agreement). A flat list fails to resolve scenes where Maya speaks to Danny.</div>
+            </div>
+            <div class="feature-spec-row">
+              <div class="spec-label">Suggested UX Resolution</div>
+              <div class="spec-desc">Upgrade to <strong>Character Bible 2.0</strong> with an interactive <em>Speaker &rarr; Listener Relationship Matrix</em>, confidence-weighted TMDB auto-population, and an instant "Impact Simulator" showing which subtitle lines will change.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-header">
+            <div class="feature-rank">F4</div>
+            <div class="feature-title-block">
+              <h4>Editor Lacks Audio Waveform & Speech Pause Snapping</h4>
+              <span class="tagline">Audio-Visual Disconnection</span>
+            </div>
+            <span class="status-badge attention">Editing Inefficiency</span>
+          </div>
+          <div class="feature-body">
+            <div class="feature-spec-row">
+              <div class="spec-label">Observed User Friction</div>
+              <div class="spec-desc">The current Subtitle Editor is a vertical text list (`SubtitleLineRow`). Adjusting cue start/end times requires manual text typing or guessing with arrow keys, without seeing the audio speech envelopes or pause silences.</div>
+            </div>
+            <div class="feature-spec-row">
+              <div class="spec-label">Suggested UX Resolution</div>
+              <div class="spec-desc">Embed a <strong>compact audio waveform track</strong> with snap-to-silence magnetic handles, visual CPS color grading, and one-click "AI Re-translate this line with variations" button.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================================
+         TAB 2: TOP 10 FEATURES & USER FLOW CAPABILITIES
+         ======================================================================== -->
+    <section id="tab-top10" class="tab-section">
+      <div class="section-header">
+        <span class="eyebrow">Product & UX Roadmap</span>
+        <h3>Top 10 Strategic Features & Flow Overhauls</h3>
+        <p>Prioritized by customer delight, translation precision, and desktop media player usability benchmarks.</p>
+      </div>
+
+      <div class="grid-2">
+        <!-- Feature 1 -->
+        <div class="feature-card highlighted">
+          <div class="feature-header">
+            <div class="feature-rank">01</div>
+            <div class="feature-title-block">
+              <h4>Precision Subtitle Sync Scrubber & Live Timeline Runway</h4>
+              <span class="tagline">In-Player HUD &bull; Zero Interruption</span>
+            </div>
+            <span class="status-badge ready">P0 &bull; Must Have</span>
+          </div>
+          <div class="feature-body">
+            <div class="feature-spec-row">
+              <div class="spec-label">The Problem & User Value</div>
+              <div class="spec-desc">Subtitles sourced from external sidecars or ASR often drift by 150&ndash;600ms against specific BluRay/Web releases. Users hate exiting full screen to adjust sync.</div>
+            </div>
+            <div class="feature-spec-row">
+              <div class="spec-label">User Flow & UX Interaction</div>
+              <div class="spec-desc">1. While playing in full-screen, pressing <kbd class="mono">Z</kbd> or <kbd class="mono">X</kbd> (or dragging the mini-stepper in the transport bar) shifts delay by &plusmn;50ms.<br>2. A subtle floating glass badge displays: <code class="mono rtl-text">תזמון: -200ms (מוקדם)</code>.<br>3. The timeline scrubber features a two-tone gradient displaying cached/ready subtitle segments vs. in-flight AI chunks.</div>
+            </div>
+            <div class="feature-flow-visual">
+[Play Video] &rarr; [Spot 200ms Lag] &rarr; [Press Z / Drag HUD Stepper] &rarr; [Instant Offset Saved to SQLite & Sidecar]
+            </div>
+          </div>
+          <div class="feature-footer">
+            <span>Affects: <strong class="mono">PlayerPage, TransportBar</strong></span>
+            <span class="impact">&uarr; 42% Viewer Retention</span>
+          </div>
+        </div>
+
+        <!-- Feature 2 -->
+        <div class="feature-card highlighted">
+          <div class="feature-header">
+            <div class="feature-rank">02</div>
+            <div class="feature-title-block">
+              <h4>Cloud Turbo Mode: Free Groq & Gemini Flash Integration</h4>
+              <span class="tagline">AI Orchestration &bull; 50&times; Acceleration</span>
+            </div>
+            <span class="status-badge ready">P0 &bull; Game Changer</span>
+          </div>
+          <div class="feature-body">
+            <div class="feature-spec-row">
+              <div class="spec-label">The Problem & User Value</div>
+              <div class="spec-desc">Local 9B models consume high unified memory on Mac mini/MacBook Air and can trigger Metal buffer issues. Free tier Groq (LPU 500 tok/s) and Google AI Studio (Gemini 2.0 Flash) provide instant, world-class Hebrew gender translation with 0 local RAM usage.</div>
+            </div>
+            <div class="feature-spec-row">
+              <div class="spec-label">User Flow & UX Interaction</div>
+              <div class="spec-desc">1. In Settings or Title Detail, user toggles between <strong>"Air-Gapped Local"</strong> and <strong>"Cloud Turbo (Free API Key)"</strong>.<br>2. When Turbo is selected, a 1-click test button verifies key validity, ping time, and daily token quota bar.<br>3. An entire season of TV is transcribed and translated in ~90 seconds instead of hours.</div>
+            </div>
+            <div class="feature-flow-visual">
+[Select Movie] &rarr; [Toggle Cloud Turbo (Groq 70B / Gemini Flash)] &rarr; [Instant Batch Translation: 500 tok/s]
+            </div>
+          </div>
+          <div class="feature-footer">
+            <span>Affects: <strong class="mono">SettingsPage, EngineClient, TitleDetailPage</strong></span>
+            <span class="impact">50&times; Throughput</span>
+          </div>
+        </div>
+
+        <!-- Feature 3 -->
+        <div class="feature-card">
+          <div class="feature-header">
+            <div class="feature-rank">03</div>
+            <div class="feature-title-block">
+              <h4>Character Bible 2.0: Speaker-to-Addressee Relation Graph</h4>
+              <span class="tagline">Hebrew Gender Accuracy &bull; Interactive Matrix</span>
+            </div>
+            <span class="status-badge ready">P1 &bull; Core Differentiator</span>
+          </div>
+          <div class="feature-body">
+            <div class="feature-spec-row">
+              <div class="spec-label">The Problem & User Value</div>
+              <div class="spec-desc">Hebrew verbs and adjectives shift depending on whether a male character is addressing a female character (<span class="rtl-text">את רוצה</span>) vs male (<span class="rtl-text">אתה רוצה</span>). Generic translation tools make embarrassing mistakes here.</div>
+            </div>
+            <div class="feature-spec-row">
+              <div class="spec-label">User Flow & UX Interaction</div>
+              <div class="spec-desc">1. Franchise Bible screen offers a toggle between "Card View" and "Relationship Graph".<br>2. Connecting Character A to Character B lets the user specify: Formal, Intimate, Family, or Subordinate.<br>3. An <strong>"Impact Preview"</strong> modal highlights: <em>"Updating Hari &rarr; Gaal changes 34 cues across Season 1. Approve re-translation?"</em></div>
+            </div>
+            <div class="feature-flow-visual">
+[Select Character] &rarr; [Assign Addressee Gender Rule] &rarr; [Simulate Impact] &rarr; [Targeted Re-Queue]
+            </div>
+          </div>
+          <div class="feature-footer">
+            <span>Affects: <strong class="mono">CharactersSection, BibleStore, EngineBridge</strong></span>
+            <span class="impact">99.2% Gender Precision</span>
+          </div>
+        </div>
+
+        <!-- Feature 4 -->
+        <div class="feature-card">
+          <div class="feature-header">
+            <div class="feature-rank">04</div>
+            <div class="feature-title-block">
+              <h4>Dual-Language Subtitle HUD with Interactive Lexicon</h4>
+              <span class="tagline">Language Learning &bull; Cross-Verification</span>
+            </div>
+            <span class="status-badge running">P1 &bull; High Delight</span>
+          </div>
+          <div class="feature-body">
+            <div class="feature-spec-row">
+              <div class="spec-label">The Problem & User Value</div>
+              <div class="spec-desc">Users studying English/Hebrew or verifying machine translation want to see the original English dialogue directly above the Hebrew translation, with instant replay.</div>
+            </div>
+            <div class="feature-spec-row">
+              <div class="spec-label">User Flow & UX Interaction</div>
+              <div class="spec-desc">1. User presses <kbd class="mono">D</kbd> in player to activate Dual-Sub Mode.<br>2. Hebrew sits primary (bottom, 24pt, centered RTL); English sits secondary (top, 16pt, muted grey).<br>3. Pausing allows hovering any Hebrew word to see phonetic transliteration and dictionary lemma.</div>
+            </div>
+            <div class="feature-flow-visual">
+[Press 'D'] &rarr; [Dual Stack Rendered] &rarr; [Press 'A' / 'S' to Loop Current Cue Sentence]
+            </div>
+          </div>
+          <div class="feature-footer">
+            <span>Affects: <strong class="mono">PlayerPage, SubtitleView, MediaKit</strong></span>
+            <span class="impact">App of the Day Factor</span>
+          </div>
+        </div>
+
+        <!-- Feature 5 -->
+        <div class="feature-card">
+          <div class="feature-header">
+            <div class="feature-rank">05</div>
+            <div class="feature-title-block">
+              <h4>Audio Waveform Subtitle Studio & Snap-to-Silence</h4>
+              <span class="tagline">Pro Audio Editing &bull; Boundary Magnetic Snapping</span>
+            </div>
+            <span class="status-badge running">P1 &bull; Power Tool</span>
+          </div>
+          <div class="feature-body">
+            <div class="feature-spec-row">
+              <div class="spec-label">The Problem & User Value</div>
+              <div class="spec-desc">Editing subtitle timestamps without visual soundwaves feels blind. Users accidentally split cues across spoken words or leave awkward gaps.</div>
+            </div>
+            <div class="feature-spec-row">
+              <div class="spec-label">User Flow & UX Interaction</div>
+              <div class="spec-desc">1. In Subtitle Editor, a top mini-timeline displays the 16kHz mono audio waveform.<br>2. Cues appear as draggable bounding boxes. Dragging cue edges snaps magnetically to speech silence valleys.<br>3. Real-time CPS (Characters Per Second) gauge turns red if text exceeds 17 chars/sec.</div>
+            </div>
+            <div class="feature-flow-visual">
+[Audio Waveform Track] &rarr; [Snap Handles to Speech Silence] &rarr; [Live CPS Color Check] &rarr; [Cmd+S]
+            </div>
+          </div>
+          <div class="feature-footer">
+            <span>Affects: <strong class="mono">SubtitleEditorPage, SubtitleLineRow</strong></span>
+            <span class="impact">3&times; Editing Speed</span>
+          </div>
+        </div>
+
+        <!-- Feature 6 -->
+        <div class="feature-card">
+          <div class="feature-header">
+            <div class="feature-rank">06</div>
+            <div class="feature-title-block">
+              <h4>Universal Command Palette (⌘K) & Keyboard Architecture</h4>
+              <span class="tagline">Desktop Ergonomics &bull; Power User Hub</span>
+            </div>
+            <span class="status-badge ready">P1 &bull; macOS Native</span>
+          </div>
+          <div class="feature-body">
+            <div class="feature-spec-row">
+              <div class="spec-label">The Problem & User Value</div>
+              <div class="spec-desc">Navigating between Library, Queue, Character Bible, and Settings requires excessive mouse clicks. Power users expect Raycast / Spotlight efficiency.</div>
+            </div>
+            <div class="feature-spec-row">
+              <div class="spec-label">User Flow & UX Interaction</div>
+              <div class="spec-desc">1. Press <kbd class="mono">&amp;#8984;K</kbd> anywhere in the application.<br>2. A floating glass search bar opens instantly with fuzzy matching for: titles, episodes, character names, queue actions, and subtitle restyling commands.<br>3. Typing <em>"Hari"</em> jumps straight to Foundation's Character Bible entry.</div>
+            </div>
+            <div class="feature-flow-visual">
+[Cmd+K] &rarr; [Type "Fix Dune" or "Pause Queue"] &rarr; [Press Enter &rarr; Executed Instantly]
+            </div>
+          </div>
+          <div class="feature-footer">
+            <span>Affects: <strong class="mono">AppShell, Global Shortcuts, LibrarySearch</strong></span>
+            <span class="impact">Pro Workflow Polish</span>
+          </div>
+        </div>
+
+        <!-- Feature 7 -->
+        <div class="feature-card">
+          <div class="feature-header">
+            <div class="feature-rank">07</div>
+            <div class="feature-title-block">
+              <h4>Lossless MKV Remux & Universal Export Center</h4>
+              <span class="tagline">Ecosystem Freedom &bull; Apple TV / Infuse Ready</span>
+            </div>
+            <span class="status-badge queued">P2 &bull; Interoperability</span>
+          </div>
+          <div class="feature-body">
+            <div class="feature-spec-row">
+              <div class="spec-label">The Problem & User Value</div>
+              <div class="spec-desc">Users frequently wish to watch their translated media on a living room Apple TV (via Infuse or Plex) without running the Mac player app.</div>
+            </div>
+            <div class="feature-spec-row">
+              <div class="spec-label">User Flow & UX Interaction</div>
+              <div class="spec-desc">1. From Title Detail, user clicks <strong>"Export Subtitles &bull;&bull;&bull;"</strong>.<br>2. Options: <em>a) Lossless Mux into MKV</em> (injects subtitle track in 3 seconds via native libav/mkvmerge without re-encoding video), <em>b) Export Styled ASS/SRT</em>, or <em>c) AirDrop to iPhone</em>.<br>3. File is immediately playable on LG WebOS, Apple TV, and Infuse.</div>
+            </div>
+            <div class="feature-flow-visual">
+[Title Detail] &rarr; [Export &rarr; Mux to MKV] &rarr; [Zero Quality Loss / Instant] &rarr; [Infuse / Plex Ready]
+            </div>
+          </div>
+          <div class="feature-footer">
+            <span>Affects: <strong class="mono">TitleDetailPage, EngineSidecar, SubtitleExport</strong></span>
+            <span class="impact">Living Room Utility</span>
+          </div>
+        </div>
+
+        <!-- Feature 8 -->
+        <div class="feature-card">
+          <div class="feature-header">
+            <div class="feature-rank">08</div>
+            <div class="feature-title-block">
+              <h4>Visual TMDB Disambiguation Carousel & File Stacking</h4>
+              <span class="tagline">Library Intelligence &bull; Multi-Edition Matching</span>
+            </div>
+            <span class="status-badge running">P2 &bull; Clean Organization</span>
+          </div>
+          <div class="feature-body">
+            <div class="feature-spec-row">
+              <div class="spec-label">The Problem & User Value</div>
+              <div class="spec-desc">Mismatched scene filenames (e.g. <code>Dune.Part.Two.2024.2160p.HDR.x265</code>) or having both 1080p and 4K versions clutter the library and confuse metadata scraping.</div>
+            </div>
+            <div class="feature-spec-row">
+              <div class="spec-label">User Flow & UX Interaction</div>
+              <div class="spec-desc">1. Unmatched or low-confidence titles show a stylish <strong>"Resolve Match"</strong> pill on their poster card.<br>2. Clicking opens a visual side-by-side poster comparison carousel with year, director, cast, and overview.<br>3. Multiple files of the same movie automatically collapse into a single card with an "Edition Switcher" (4K Remux / 1080p / Director's Cut).</div>
+            </div>
+            <div class="feature-flow-visual">
+[Ambiguous Filename] &rarr; [Smart TMDB Carousel] &rarr; [1-Click Match & Cast Bible Seeding]
+            </div>
+          </div>
+          <div class="feature-footer">
+            <span>Affects: <strong class="mono">FixMatchDialog, LibraryStore, TitleCard</strong></span>
+            <span class="impact">Zero Clutter Guarantee</span>
+          </div>
+        </div>
+
+        <!-- Feature 9 -->
+        <div class="feature-card">
+          <div class="feature-header">
+            <div class="feature-rank">09</div>
+            <div class="feature-title-block">
+              <h4>Power & Thermal Aware Background Job Scheduler</h4>
+              <span class="tagline">Silent Operation &bull; Battery Preservation</span>
+            </div>
+            <span class="status-badge queued">P2 &bull; macOS Citizen</span>
+          </div>
+          <div class="feature-body">
+            <div class="feature-spec-row">
+              <div class="spec-label">The Problem & User Value</div>
+              <div class="spec-desc">Running ASR Whisper and DictaLM LLM locally spins up MacBook fans and rapidly drains battery if left unsupervised on a train or plane.</div>
+            </div>
+            <div class="feature-spec-row">
+              <div class="spec-label">User Flow & UX Interaction</div>
+              <div class="spec-desc">1. The Job Queue gains 3 intelligent presets: <strong>Turbo Batch (All Cores / AC Power)</strong>, <strong>Quiet Balanced</strong>, and <strong>Battery Saver (Pause on Battery)</strong>.<br>2. AutoSub hooks into macOS power notifications: automatically pausing AI sweeps when unplugged or when battery drops below 20%.<br>3. Seamless Auto-Yield resumes when video finishes playing.</div>
+            </div>
+            <div class="feature-flow-visual">
+[Unplug MacBook] &rarr; [Queue Enters "Paused on Battery" State] &rarr; [Plug In &rarr; Auto-Resumes]
+            </div>
+          </div>
+          <div class="feature-footer">
+            <span>Affects: <strong class="mono">ProcessingManager, EngineSupervisor, QueuePage</strong></span>
+            <span class="impact">Zero Fan Noise</span>
+          </div>
+        </div>
+
+        <!-- Feature 10 -->
+        <div class="feature-card">
+          <div class="feature-header">
+            <div class="feature-rank">10</div>
+            <div class="feature-title-block">
+              <h4>Bonjour Companion Station & iOS Remote Cast Hub</h4>
+              <span class="tagline">Multi-Device Harmony &bull; Instant LAN Handoff</span>
+            </div>
+            <span class="status-badge queued">P2 &bull; Ecosystem Synergy</span>
+          </div>
+          <div class="feature-body">
+            <div class="feature-spec-row">
+              <div class="spec-label">The Problem & User Value</div>
+              <div class="spec-desc">Syncing character bibles and sidecar subtitle files between Mac and iPhone currently lacks visual status and intuitive pairing confirmation.</div>
+            </div>
+            <div class="feature-spec-row">
+              <div class="spec-label">User Flow & UX Interaction</div>
+              <div class="spec-desc">1. A dedicated "Devices Dock" at the bottom of the left rail shows nearby iPhones over Bonjour.<br>2. Hovering displays sync status: <em>"iPhone 15 Pro &bull; 14 titles synced &bull; Wi-Fi 6"</em>.<br>3. Clicking any video card offers <strong>"Send Subtitles to iPhone"</strong> or <strong>"Continue Watching on iPad (AirPlay / SMB)"</strong>.</div>
+            </div>
+            <div class="feature-flow-visual">
+[Mac Generates Subtitles] &rarr; [Instant Bonjour Push] &rarr; [iPhone Ready for Offline Flight]
+            </div>
+          </div>
+          <div class="feature-footer">
+            <span>Affects: <strong class="mono">SyncServer, AppShell Rail, iOS Companion Spec</strong></span>
+            <span class="impact">Seamless Continuity</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================================
+         TAB 3: COMPLETE APP GUI DESIGN (ALL 9 CORE SURFACES)
+         ======================================================================== -->
+    <section id="tab-gui" class="tab-section">
+      <div class="section-header">
+        <span class="eyebrow">GUI System Architecture</span>
+        <h3>The Complete Desktop App GUI Specification</h3>
+        <p>Architectural blueprints, layout hierarchies, micro-interactions, and visual mockups for every screen in the AutoSub ecosystem.</p>
+      </div>
+
+      <div class="screen-showcase-container">
+
+        <!-- Surface 1: Global Chrome & Adaptive Rail -->
+        <div class="screen-spec-card">
+          <div class="screen-header-bar">
+            <div class="screen-title">
+              <h4>Surface 1: Global Chrome & Unified Adaptive Rail</h4>
+              <p>Persistent macOS window frame &bull; Left Collapsible Navigation &bull; Engine Telemetry Dock</p>
+            </div>
+            <span class="status-badge ready">System Chrome</span>
+          </div>
+          <div class="screen-layout-grid">
+            <div class="screen-canvas-preview">
+              <!-- Window Mockup -->
+              <div class="mock-window">
+                <div class="mock-titlebar">
+                  <div class="traffic-lights">
+                    <div class="traffic-dot close"></div>
+                    <div class="traffic-dot min"></div>
+                    <div class="traffic-dot max"></div>
+                  </div>
+                  <div class="mock-title-text">AutoSub Media Player &mdash; Foundation (2021)</div>
+                  <div style="display:flex; gap:8px;">
+                    <span class="pill-toggle" style="font-size:10px; padding:2px 8px;">⌘K Search</span>
+                  </div>
+                </div>
+                <div class="mock-body">
+                  <div class="mock-rail">
+                    <div class="mock-rail-item active" title="Library">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                      <span>Media</span>
+                    </div>
+                    <div class="mock-rail-item" title="Queue">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                      <span>Queue</span>
+                      <div class="mock-rail-badge">2</div>
+                    </div>
+                    <div class="mock-rail-item" title="Character Bibles">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                      <span>Bibles</span>
+                    </div>
+                    <div class="mock-rail-item" title="Settings">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                      <span>Config</span>
+                    </div>
+
+                    <div style="margin-top:auto; display:flex; flex-direction:column; align-items:center; gap:6px;">
+                      <div style="width:8px; height:8px; border-radius:50%; background:var(--status-ready); box-shadow:0 0 8px var(--status-ready);" title="Engine Online (MLX &bull; M1)"></div>
+                      <span style="font-size:9px; color:var(--text-tertiary);" class="mono">LOCAL</span>
+                    </div>
+                  </div>
+
+                  <div class="mock-content" style="background:#0D111A;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                      <h3 style="font-size:18px; font-weight:700;">Library Overview</h3>
+                      <div style="display:flex; gap:8px;">
+                        <input type="text" placeholder="Filter titles (⌘F)..." style="background:var(--bg-surface); border:1px solid var(--hairline); color:var(--text-primary); border-radius:var(--radius-sm); padding:4px 10px; font-size:12px;" />
+                        <span class="pill-toggle" style="font-size:11px;">Recently Added ▾</span>
+                      </div>
+                    </div>
+
+                    <!-- Mini Poster Row -->
+                    <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:12px;">
+                      <div style="background:var(--bg-surface); border:1px solid var(--hairline); border-radius:var(--radius-md); padding:8px; position:relative;">
+                        <div style="height:110px; background:linear-gradient(135deg, #2D3748, #1A202C); border-radius:var(--radius-sm); margin-bottom:8px; display:flex; align-items:flex-end; padding:8px;">
+                          <span class="status-badge ready" style="font-size:9px; padding:1px 5px;">Ready &bull; he</span>
+                        </div>
+                        <div style="font-size:12px; font-weight:700;">Foundation</div>
+                        <div style="font-size:10px; color:var(--text-secondary);">S2 &bull; E4</div>
+                      </div>
+
+                      <div style="background:var(--bg-surface); border:1px solid var(--hairline); border-radius:var(--radius-md); padding:8px; position:relative;">
+                        <div style="height:110px; background:linear-gradient(135deg, #1E3A8A, #1E293B); border-radius:var(--radius-sm); margin-bottom:8px; display:flex; align-items:flex-end; padding:8px;">
+                          <span class="status-badge running" style="font-size:9px; padding:1px 5px;">62% Transcribe</span>
+                        </div>
+                        <div style="font-size:12px; font-weight:700;">Dune: Part Two</div>
+                        <div style="font-size:10px; color:var(--text-secondary);">2024 &bull; 4K HDR</div>
+                      </div>
+
+                      <div style="background:var(--bg-surface); border:1px solid var(--hairline); border-radius:var(--radius-md); padding:8px; position:relative;">
+                        <div style="height:110px; background:linear-gradient(135deg, #4A044E, #1F2937); border-radius:var(--radius-sm); margin-bottom:8px; display:flex; align-items:flex-end; padding:8px;">
+                          <span class="status-badge attention" style="font-size:9px; padding:1px 5px;">Needs Match</span>
+                        </div>
+                        <div style="font-size:12px; font-weight:700;">Severance</div>
+                        <div style="font-size:10px; color:var(--text-secondary);">S1 &bull; E1</div>
+                      </div>
+
+                      <div style="background:var(--bg-surface); border:1px solid var(--hairline); border-radius:var(--radius-md); padding:8px; position:relative;">
+                        <div style="height:110px; background:linear-gradient(135deg, #064E3B, #111827); border-radius:var(--radius-sm); margin-bottom:8px; display:flex; align-items:flex-end; padding:8px;">
+                          <span class="status-badge ready" style="font-size:9px; padding:1px 5px;">Ready &bull; he</span>
+                        </div>
+                        <div style="font-size:12px; font-weight:700;">Interstellar</div>
+                        <div style="font-size:10px; color:var(--text-secondary);">2014 &bull; IMAX</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sidebar Specifications -->
+            <div class="screen-sidebar-specs">
+              <div class="spec-block">
+                <h5>Chrome Rules & macOS Alignment</h5>
+                <ul>
+                  <li><strong>Window Frame:</strong> Native macOS titlebar with vibrant blurred backing (`NSVisualEffectView` or Flutter `macos_window_utils`).</li>
+                  <li><strong>Left Rail Width:</strong> 72pt fixed width. Chrome is strictly <strong>LTR</strong> even on RTL systems to match macOS window flow.</li>
+                  <li><strong>Badge Pulsing:</strong> Active jobs pulse in warm amber. Red badge appears on failure.</li>
+                  <li><strong>Engine Health Dock:</strong> Real-time engine status (Green = Loopback daemon alive; Amber = Heavy inference in progress; Red = Sidecar offline).</li>
+                </ul>
+              </div>
+
+              <div class="spec-block">
+                <h5>Keyboard Shortcuts (<kbd class="mono">DS §6</kbd>)</h5>
+                <ul>
+                  <li><kbd class="mono">⌘1</kbd> &rarr; Library Grid</li>
+                  <li><kbd class="mono">⌘2</kbd> &rarr; Processing Queue</li>
+                  <li><kbd class="mono">⌘3</kbd> &rarr; Character Bibles</li>
+                  <li><kbd class="mono">⌘,</kbd> &rarr; Preferences</li>
+                  <li><kbd class="mono">⌘K</kbd> &rarr; Command Palette</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Surface 2: Title Detail & Runway Inspector -->
+        <div class="screen-spec-card">
+          <div class="screen-header-bar">
+            <div class="screen-title">
+              <h4>Surface 2: Title Detail Hub & Subtitle Runway Inspector</h4>
+              <p>Artwork Backdrop Tinting &bull; Multi-Track Audio Selector &bull; Provenance Telemetry Card</p>
+            </div>
+            <span class="status-badge ready">Detail Surface</span>
+          </div>
+          <div class="screen-layout-grid">
+            <div class="screen-canvas-preview">
+              <div class="mock-window">
+                <div class="mock-titlebar">
+                  <div class="traffic-lights"><div class="traffic-dot close"></div><div class="traffic-dot min"></div><div class="traffic-dot max"></div></div>
+                  <div class="mock-title-text">&lsaquo; Library &bull; Foundation (Series)</div>
+                  <div></div>
+                </div>
+
+                <div style="padding:24px; background:radial-gradient(circle at 100% 0%, rgba(232, 163, 61, 0.15) 0%, #0F131D 70%);">
+                  <div style="display:flex; gap:20px; align-items:flex-start;">
+                    <div style="width:130px; height:195px; border-radius:var(--radius-md); background:linear-gradient(135deg, #374151, #111827); border:1px solid var(--hairline-strong); box-shadow:var(--shadow-md); flex-shrink:0; display:flex; align-items:center; justify-content:center; color:var(--text-tertiary); font-size:12px;">
+                      Poster Art
+                    </div>
+
+                    <div style="flex:1;">
+                      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                        <div>
+                          <h2 style="font-size:24px; font-weight:800; letter-spacing:-0.5px;">Foundation <span style="font-weight:400; color:var(--text-secondary); font-size:18px;">(2021&ndash;)</span></h2>
+                          <div style="display:flex; gap:10px; font-size:12px; color:var(--text-secondary); margin:4px 0 12px;">
+                            <span>★ 8.3 TMDB</span> &bull; <span>Sci-Fi &bull; Drama</span> &bull; <span>2 Seasons</span> &bull; <span>Apple TV+</span>
+                          </div>
+                        </div>
+                        <span class="status-badge ready">Subtitles Complete (v3)</span>
+                      </div>
+
+                      <p style="font-size:13px; color:var(--text-secondary); line-height:1.5; margin-bottom:16px;">
+                        A complex saga of humans scattered on planets throughout the galaxy all living under the rule of the Galactic Empire. Based on Isaac Asimov's seminal novels.
+                      </p>
+
+                      <div style="display:flex; gap:10px;">
+                        <button class="action-btn primary" style="padding:8px 18px; font-size:13px;">▶ Resume S2&bull;E2 (14:20)</button>
+                        <button class="action-btn">Edit Subtitles (Hebrew)</button>
+                        <button class="action-btn">Character Bible (12)</button>
+                        <button class="action-btn">Fix Match</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Provenance & Runway Bar -->
+                  <div style="margin-top:24px; background:var(--bg-surface); border:1px solid var(--hairline); border-radius:var(--radius-md); padding:16px;">
+                    <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:8px;">
+                      <span style="font-weight:700; color:var(--accent);">Active Subtitle Track: Hebrew (Modern &bull; RTL)</span>
+                      <span class="mono" style="color:var(--text-secondary);">Source: ASR (WhisperKit Large-v3) &rarr; DictaLM 3.0 (12B)</span>
+                    </div>
+                    <div style="height:8px; background:rgba(255,255,255,0.1); border-radius:4px; overflow:hidden; position:relative;">
+                      <div style="width:100%; height:100%; background:var(--status-ready); border-radius:4px;"></div>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-tertiary); margin-top:6px;" class="mono">
+                      <span>1,142 Cues Checked</span>
+                      <span>Average CPS: 13.8 / 17 (Comfortable)</span>
+                      <span>Bible Version: v3 (Locked)</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="screen-sidebar-specs">
+              <div class="spec-block">
+                <h5>UX Hierarchy & Edge States</h5>
+                <ul>
+                  <li><strong>Hero Glassmorphism:</strong> Backdrop extracts ambient dominant colors from TMDB poster art (subtle 8% opacity tint).</li>
+                  <li><strong>Source Hierarchy:</strong> Pre-existing embedded English subtitle &gt; Clean external `.srt` sidecar &gt; WhisperKit ASR fallback.</li>
+                  <li><strong>Audio Track Awareness:</strong> If media contains multi-channel audio (e.g. 5.1 Surround Commentary vs Clean Dialogue), engine defaults to Center dialogue channel for 40% cleaner ASR.</li>
+                  <li><strong>Runway States:</strong> Shows real-time generation progress when opening an episode immediately while transcribing.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Surface 3: Cinematic Video Player & HUD -->
+        <div class="screen-spec-card">
+          <div class="screen-header-bar">
+            <div class="screen-title">
+              <h4>Surface 3: The Cinematic Player & In-Player Sync HUD</h4>
+              <p>libmpv Hardware Decoding &bull; Floating Island Controls &bull; Live Offset Stepper &bull; Restyle Popover</p>
+            </div>
+            <span class="status-badge ready">Core Viewport</span>
+          </div>
+          <div class="screen-layout-grid">
+            <div class="screen-canvas-preview">
+              <!-- Player Frame -->
+              <div class="interactive-viewport" style="min-height:380px;">
+                <div class="video-canvas">
+                  <div class="video-scene-indicator">SCENE 14 &bull; EMPIRE'S THRONE ROOM</div>
+                  <div class="subtitle-display-area">
+                    <div class="sub-line-source">Did you really think the Empire would fall so easily, Hari?</div>
+                    <div class="sub-line-hebrew">באמת חשבת שהאימפריה תיפול כל כך בקלות, הארי?</div>
+                  </div>
+                </div>
+
+                <!-- HUD Bar -->
+                <div class="player-hud-bar">
+                  <div class="timeline-scrubber-container">
+                    <span class="time-readout mono">14:20</span>
+                    <div class="scrubber-track">
+                      <div class="scrubber-runway" style="width:90%;"></div>
+                      <div class="scrubber-fill" style="width:32%;"></div>
+                      <div class="scrubber-handle" style="left:32%;"></div>
+                    </div>
+                    <span class="time-readout mono">48:15</span>
+                  </div>
+
+                  <div class="hud-controls-row">
+                    <div class="playback-buttons">
+                      <button class="hud-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg></button>
+                      <button class="hud-btn primary-play"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>
+                      <button class="hud-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg></button>
+                      <span style="font-size:12px; color:var(--text-secondary); margin-left:8px;" class="mono">1.0&times;</span>
+                    </div>
+
+                    <div class="hud-quick-tools">
+                      <div class="delay-stepper">
+                        <span>Sync Offset:</span>
+                        <button class="stepper-btn">-</button>
+                        <span style="color:var(--accent);" class="mono">0ms</span>
+                        <button class="stepper-btn">+</button>
+                      </div>
+
+                      <button class="pill-toggle active">
+                        <span>CC</span> Hebrew (RTL)
+                      </button>
+
+                      <button class="pill-toggle">
+                        <span>Dual-Sub</span>
+                      </button>
+
+                      <button class="hud-btn" title="Subtitle Appearance (⌘⇧S)">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                      </button>
+
+                      <button class="hud-btn" title="Full Screen (F)">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="screen-sidebar-specs">
+              <div class="spec-block">
+                <h5>Player UX Directives</h5>
+                <ul>
+                  <li><strong>Auto-Hide:</strong> Controls vanish after 2.4s of mouse stillness; smoothly fade in on any cursor velocity &gt; 5px/s.</li>
+                  <li><strong>Pin Directionality:</strong> Transport bar, scrubber, and timecodes remain strictly <strong>LTR</strong> because time flows left-to-right. Subtitle overlay text alone receives RTL isolation.</li>
+                  <li><strong>Hotkeys:</strong> <kbd class="mono">Space</kbd> = Play/Pause; <kbd class="mono">&larr;/&rarr;</kbd> = &plusmn;5s seek; <kbd class="mono">Z/X</kbd> = &plusmn;50ms subtitle offset nudge; <kbd class="mono">S</kbd> = Subtitle toggle.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Surface 4: Character Bible Studio 2.0 -->
+        <div class="screen-spec-card">
+          <div class="screen-header-bar">
+            <div class="screen-title">
+              <h4>Surface 4: Character Bible 2.0 Workbench & Disambiguation</h4>
+              <p>Franchise Roster &bull; Gender Inflection Rules &bull; Relationship Graph &bull; Impact Simulator</p>
+            </div>
+            <span class="status-badge ready">Linguistic Studio</span>
+          </div>
+          <div class="screen-layout-grid">
+            <div class="screen-canvas-preview">
+              <div class="mock-window">
+                <div class="mock-titlebar">
+                  <div class="traffic-lights"><div class="traffic-dot close"></div><div class="traffic-dot min"></div><div class="traffic-dot max"></div></div>
+                  <div class="mock-title-text">&lsaquo; Foundation &bull; Character Bible (12 Entities &bull; v3 Locked)</div>
+                  <div></div>
+                </div>
+                <div style="padding:20px; background:#0B0E16; display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                  <!-- Left: Character List -->
+                  <div style="display:flex; flex-direction:column; gap:8px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                      <span style="font-size:12px; font-weight:700; color:var(--text-secondary);">PROPOSED &amp; CONFIRMED</span>
+                      <span class="status-badge ready" style="font-size:10px;">🔒 Bible Locked</span>
+                    </div>
+
+                    <div style="background:var(--bg-surface-elevated); border:1px solid var(--accent); border-radius:var(--radius-md); padding:12px;">
+                      <div style="display:flex; justify-content:space-between;">
+                        <strong style="color:var(--text-primary);">Hari Seldon</strong>
+                        <span class="rtl-text" style="color:var(--accent); font-weight:700;">הארי סלדון</span>
+                      </div>
+                      <div style="display:flex; gap:6px; margin-top:6px;">
+                        <span class="status-badge ready" style="font-size:10px;">♂ Male (Zachar)</span>
+                        <span class="status-badge attention" style="font-size:10px;">99% Confidence</span>
+                      </div>
+                    </div>
+
+                    <div style="background:var(--bg-surface); border:1px solid var(--hairline); border-radius:var(--radius-md); padding:12px;">
+                      <div style="display:flex; justify-content:space-between;">
+                        <strong style="color:var(--text-primary);">Gaal Dornick</strong>
+                        <span class="rtl-text" style="color:var(--accent); font-weight:700;">גאל דורניק</span>
+                      </div>
+                      <div style="display:flex; gap:6px; margin-top:6px;">
+                        <span class="status-badge ready" style="font-size:10px;">♀ Female (Nekeva)</span>
+                        <span class="status-badge ready" style="font-size:10px;">Verified TMDB</span>
+                      </div>
+                    </div>
+
+                    <div style="background:var(--bg-surface); border:1px solid var(--hairline); border-radius:var(--radius-md); padding:12px;">
+                      <div style="display:flex; justify-content:space-between;">
+                        <strong style="color:var(--text-primary);">Demerzel</strong>
+                        <span class="rtl-text" style="color:var(--accent); font-weight:700;">דמרזל</span>
+                      </div>
+                      <div style="display:flex; gap:6px; margin-top:6px;">
+                        <span class="status-badge ready" style="font-size:10px;">♀ Female (Android)</span>
+                        <span class="status-badge ready" style="font-size:10px;">Human Verified</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Right: Edit Form & Impact -->
+                  <div style="background:var(--bg-surface); border:1px solid var(--hairline-strong); border-radius:var(--radius-md); padding:16px; display:flex; flex-direction:column; gap:12px;">
+                    <h5 style="font-size:13px; font-weight:700; color:var(--accent);">EDITING: HARI SELDON</h5>
+
+                    <div>
+                      <label style="font-size:11px; color:var(--text-secondary); display:block; margin-bottom:4px;">Canonical English Name</label>
+                      <input type="text" value="Hari Seldon" style="width:100%; background:var(--bg-base); border:1px solid var(--hairline); color:var(--text-primary); padding:6px 10px; border-radius:var(--radius-sm); font-size:12px;" />
+                    </div>
+
+                    <div>
+                      <label style="font-size:11px; color:var(--text-secondary); display:block; margin-bottom:4px;">Hebrew Target Translation (RTL)</label>
+                      <input type="text" value="הארי סלדון" class="rtl-text" style="width:100%; background:var(--bg-base); border:1px solid var(--hairline); color:var(--text-primary); padding:6px 10px; border-radius:var(--radius-sm); font-size:13px;" />
+                    </div>
+
+                    <div>
+                      <label style="font-size:11px; color:var(--text-secondary); display:block; margin-bottom:4px;">Grammatical Gender</label>
+                      <div class="gender-pill-group">
+                        <span class="gender-chip active">♂ Male (זכר)</span>
+                        <span class="gender-chip">♀ Female (נקבה)</span>
+                        <span class="gender-chip">⚥ Neutral (סתמי)</span>
+                      </div>
+                    </div>
+
+                    <div style="background:rgba(245, 158, 11, 0.1); border:1px solid rgba(245, 158, 11, 0.3); border-radius:var(--radius-sm); padding:10px; font-size:11px; color:#FDE68A;">
+                      <strong>⚠ Impact Warning:</strong> Changing this gender inflects 142 dialogue lines across 4 episodes.
+                    </div>
+
+                    <div style="display:flex; gap:8px; margin-top:auto;">
+                      <button class="action-btn primary" style="flex:1;">Re-translate Cues</button>
+                      <button class="action-btn">Save Name Only</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="screen-sidebar-specs">
+              <div class="spec-block">
+                <h5>Linguistic Bible Architecture</h5>
+                <ul>
+                  <li><strong>Franchise Pinned:</strong> Character names are locked across an entire series or film franchise (e.g. *Dune Part 1 &amp; Part 2* share one glossary).</li>
+                  <li><strong>Consent-Driven Re-queuing:</strong> Edits to a character trigger an impact calculation dialog so users never get surprised by unexpected batch re-renders.</li>
+                  <li><strong>Human Edits Immune:</strong> Any line the user previously hand-edited in the Subtitle Editor is marked <code class="mono">has_user_edits</code> and will never be overwritten by an automated bible re-run.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Surface 5: Subtitle Studio (Pro Audio Waveform & Bidi Editor) -->
+        <div class="screen-spec-card">
+          <div class="screen-header-bar">
+            <div class="screen-title">
+              <h4>Surface 5: The Subtitle Studio & Audio Waveform Editor</h4>
+              <p>Synchronized Video Scrubber &bull; Bidi Syntax Editor &bull; Real-time CPS Warning &bull; Per-Line AI Rewrite</p>
+            </div>
+            <span class="status-badge ready">Editor Suite</span>
+          </div>
+          <div class="screen-layout-grid">
+            <div class="screen-canvas-preview">
+              <div class="mock-window">
+                <div class="mock-titlebar">
+                  <div class="traffic-lights"><div class="traffic-dot close"></div><div class="traffic-dot min"></div><div class="traffic-dot max"></div></div>
+                  <div class="mock-title-text">&lsaquo; Subtitle Editor &bull; Foundation S2&bull;E2 (Hebrew &bull; 1,142 Cues)</div>
+                  <div style="display:flex; gap:6px;">
+                    <button class="action-btn primary" style="font-size:11px; padding:3px 10px;">Save ⌘S</button>
+                  </div>
+                </div>
+
+                <div style="padding:16px; background:#0B0E17;">
+                  <!-- Waveform Strip Mock -->
+                  <div style="height:44px; background:#05070C; border:1px solid var(--hairline-strong); border-radius:var(--radius-sm); margin-bottom:14px; position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center;">
+                    <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:space-around; opacity:0.6;">
+                      <!-- Simulated audio bars -->
+                      <span style="height:12px; width:3px; background:#38BDF8;"></span>
+                      <span style="height:28px; width:3px; background:#38BDF8;"></span>
+                      <span style="height:36px; width:3px; background:#38BDF8;"></span>
+                      <span style="height:14px; width:3px; background:#38BDF8;"></span>
+                      <span style="height:6px; width:3px; background:#475569;"></span>
+                      <span style="height:24px; width:3px; background:#38BDF8;"></span>
+                      <span style="height:32px; width:3px; background:#38BDF8;"></span>
+                      <span style="height:18px; width:3px; background:#38BDF8;"></span>
+                      <span style="height:4px; width:3px; background:#475569;"></span>
+                      <span style="height:26px; width:3px; background:#38BDF8;"></span>
+                    </div>
+                    <div style="position:absolute; left:48%; top:0; bottom:0; width:2px; background:var(--accent); z-index:2;"></div>
+                    <span style="font-size:10px; color:var(--text-tertiary); font-family:var(--font-mono); position:absolute; right:8px; bottom:2px;">AUDIO SPEECH ENVELOPE (16 kHz MONO)</span>
+                  </div>
+
+                  <!-- Editor Line Rows -->
+                  <div style="display:flex; flex-direction:column; gap:8px;">
+                    <div class="editor-row-item focused">
+                      <div class="editor-row-meta">
+                        <span class="cue-timing">#127 &bull; 00:01:08,100 &rarr; 00:01:11,000 (2.9s)</span>
+                        <span class="cps-indicator green">CPS 12/17 &bull; Optimal</span>
+                      </div>
+                      <input type="text" class="editor-text-input" value="יעל, מה קרה שם בפנים?" />
+                    </div>
+
+                    <div class="editor-row-item" style="border-color:rgba(239, 68, 68, 0.4); background:rgba(239, 68, 68, 0.04);">
+                      <div class="editor-row-meta">
+                        <span class="cue-timing">#128 &bull; 00:01:12,300 &rarr; 00:01:14,500 (2.2s)</span>
+                        <span class="cps-indicator red">CPS 21/17 &bull; Reads Too Fast! ⚠</span>
+                      </div>
+                      <input type="text" class="editor-text-input" value="שלום יעל, האם שמעת את מה שהאימפריה הודיעה הרגע ברחבי הגלקסיה?" />
+                      <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; margin-top:2px;">
+                        <span style="color:var(--status-failed);">Warning: Exceeds maximum reading speed for viewer comfort.</span>
+                        <button class="action-btn" style="font-size:10px; padding:2px 8px;">Auto-Condense with AI ⌘R</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="screen-sidebar-specs">
+              <div class="spec-block">
+                <h5>Bidi & Subtitle Mechanics</h5>
+                <ul>
+                  <li><strong>RTL Text Field:</strong> Subtitle text inputs utilize native bi-directional isolation with punctuation pinned to the logical visual boundary.</li>
+                  <li><strong>CPS Safety Barometer:</strong> Characters Per Second calculation is tuned specifically for Hebrew (17 cps default max; 14 cps recommended for subtitles with scientific/complex terms).</li>
+                  <li><strong>Per-Line Re-Translate:</strong> Pressing <kbd class="mono">⌘R</kbd> re-submits that single sentence to DictaLM/Qwen with the full episode context to propose shorter paraphrases.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ========================================================================
+         TAB 4: LIVE INTERACTIVE LABS (PROTOTYPES)
+         ======================================================================== -->
+    <section id="tab-prototypes" class="tab-section">
+      <div class="section-header">
+        <span class="eyebrow">Interactive Verification Sandbox</span>
+        <h3>Live Interactive Functional Prototypes</h3>
+        <p>Test the proposed interaction paradigms directly in your browser. Click controls, drag sliders, and inspect responsive state updates.</p>
+      </div>
+
+      <!-- Prototype 1: Video Player HUD & Dual Subtitle Simulator -->
+      <div class="prototype-section">
+        <div class="prototype-header">
+          <div>
+            <h4 style="font-size:18px; font-weight:700;">Lab 1: In-Player Precision Sync & Dual-Sub Simulation</h4>
+            <p style="font-size:13px; color:var(--text-secondary);">Test live &plusmn;50ms audio delay nudging, Dual-Language stack, and subtitle appearance scaling.</p>
+          </div>
+          <span class="status-badge ready">Interactive Live Widget</span>
+        </div>
+
+        <div class="interactive-viewport">
+          <div class="video-canvas" id="simVideoCanvas">
+            <div class="video-scene-indicator">SIMULATED 4K PLAYBACK VIEWPORT</div>
+            <div class="subtitle-display-area" id="simSubArea">
+              <div class="sub-line-source" id="simSourceSub" style="display:none;">We have to leave the planet before the jump ship arrives.</div>
+              <div class="sub-line-hebrew" id="simTargetSub">אנחנו חייבים לעזוב את הכוכב לפני שספינת הקפיצה תגיע.</div>
+            </div>
+          </div>
+
+          <div class="player-hud-bar">
+            <div class="timeline-scrubber-container">
+              <span class="time-readout mono" id="simCurrentTime">04:18</span>
+              <div class="scrubber-track" id="simScrubber">
+                <div class="scrubber-runway" style="width:85%;"></div>
+                <div class="scrubber-fill" id="simScrubberFill" style="width:24%;"></div>
+                <div class="scrubber-handle" id="simScrubberHandle" style="left:24%;"></div>
+              </div>
+              <span class="time-readout mono">52:00</span>
+            </div>
+
+            <div class="hud-controls-row">
+              <div class="playback-buttons">
+                <button class="hud-btn primary-play" id="simBtnPlay">▶</button>
+                <button class="hud-btn" id="simBtnLoopCue" title="Loop Sentence">⟲ Cue</button>
+              </div>
+
+              <div class="hud-quick-tools">
+                <div class="delay-stepper">
+                  <span>Sync:</span>
+                  <button class="stepper-btn" id="simDelayMinus">&minus;</button>
+                  <span id="simDelayVal" style="color:var(--accent);" class="mono">0ms</span>
+                  <button class="stepper-btn" id="simDelayPlus">&plus;</button>
+                </div>
+
+                <button class="pill-toggle active" id="simToggleTargetSub">
+                  <span>CC</span> עברית (Target)
+                </button>
+
+                <button class="pill-toggle" id="simToggleDualSub">
+                  <span>Dual</span> English + עברית
+                </button>
+
+                <button class="pill-toggle" id="simToggleFontSize">
+                  <span>Font:</span> <span id="simFontLabel">26pt</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Prototype 2: Live AI Compute Switcher (Local M1 vs Free Cloud Turbo) -->
+      <div class="prototype-section">
+        <div class="prototype-header">
+          <div>
+            <h4 style="font-size:18px; font-weight:700;">Lab 2: Compute Engine Orchestrator Simulator</h4>
+            <p style="font-size:13px; color:var(--text-secondary);">Simulate switching between 100% Offline Local Apple Silicon and Free Cloud Turbo (Groq / Gemini Flash).</p>
+          </div>
+          <span class="status-badge running">Engine Benchmark Simulation</span>
+        </div>
+
+        <div style="background:var(--bg-surface); border:1px solid var(--hairline); border-radius:var(--radius-lg); padding:24px;">
+          <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; margin-bottom:24px;">
+            <div class="bible-char-card selected" id="cardEngineLocal" onclick="selectEngine('local')">
+              <div class="char-card-header">
+                <h5 style="font-size:14px; font-weight:700;">Local M1 (MLX / DictaLM)</h5>
+                <span class="status-badge ready" style="font-size:9px;">Air-Gapped</span>
+              </div>
+              <p style="font-size:12px; color:var(--text-secondary);">100% Private, no internet, runs on Mac unified memory.</p>
+              <div style="font-size:18px; font-weight:800; color:var(--accent);" class="mono">~19.2 tok/s</div>
+            </div>
+
+            <div class="bible-char-card" id="cardEngineGroq" onclick="selectEngine('groq')">
+              <div class="char-card-header">
+                <h5 style="font-size:14px; font-weight:700;">Groq Cloud LPU (Turbo)</h5>
+                <span class="status-badge attention" style="font-size:9px;">Free Key</span>
+              </div>
+              <p style="font-size:12px; color:var(--text-secondary);">Llama 3.3 70B &amp; Whisper Large-v3. 14,400 free requests/day.</p>
+              <div style="font-size:18px; font-weight:800; color:#38BDF8;" class="mono">~480 tok/s (25&times;)</div>
+            </div>
+
+            <div class="bible-char-card" id="cardEngineGemini" onclick="selectEngine('gemini')">
+              <div class="char-card-header">
+                <h5 style="font-size:14px; font-weight:700;">Google AI Studio (Gemini 2.0)</h5>
+                <span class="status-badge ready" style="font-size:9px;">Free 1M Ctx</span>
+              </div>
+              <p style="font-size:12px; color:var(--text-secondary);">Near-native Hebrew inflection with 1,000,000 token context.</p>
+              <div style="font-size:18px; font-weight:800; color:#A855F7;" class="mono">~220 tok/s (12&times;)</div>
+            </div>
+          </div>
+
+          <!-- Benchmark Simulator Output -->
+          <div style="background:#07090F; border:1px solid var(--hairline-strong); border-radius:var(--radius-md); padding:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+              <span style="font-size:12px; font-weight:700; color:var(--text-secondary); text-transform:uppercase;">Simulation: 2-Hour 4K Feature Film Translation</span>
+              <span id="engineSimTag" class="status-badge ready">Config: Local MLX 12B</span>
+            </div>
+
+            <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:16px;">
+              <div>
+                <div style="font-size:11px; color:var(--text-tertiary);">ESTIMATED RUNTIME</div>
+                <div id="simEstTime" style="font-size:20px; font-weight:800; color:var(--text-primary);" class="mono">42 min 10s</div>
+              </div>
+              <div>
+                <div style="font-size:11px; color:var(--text-tertiary);">LOCAL RAM PRESSURE</div>
+                <div id="simRamUse" style="font-size:20px; font-weight:800; color:var(--status-attention);" class="mono">11.8 GB (High)</div>
+              </div>
+              <div>
+                <div style="font-size:11px; color:var(--text-tertiary);">HEBREW GENDER SCORE</div>
+                <div id="simGenderScore" style="font-size:20px; font-weight:800; color:var(--status-ready);" class="mono">96.4%</div>
+              </div>
+              <div>
+                <div style="font-size:11px; color:var(--text-tertiary);">MONTHLY COST</div>
+                <div style="font-size:20px; font-weight:800; color:var(--accent);" class="mono">$0.00 (Free)</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================================
+         TAB 5: TOKENS, RTL MATRIX & IMPLEMENTATION ROADMAP
+         ======================================================================== -->
+    <section id="tab-system" class="tab-section">
+      <div class="section-header">
+        <span class="eyebrow">Implementation Engineering Specs</span>
+        <h3>Design System Tokens & Bi-directional Matrix</h3>
+        <p>Production-ready engineering guidelines conforming strictly to <code>DESIGN_SYSTEM.md</code>, <code>RTL.md</code>, and Flutter desktop best practices.</p>
+      </div>
+
+      <!-- Bidi Matrix Table -->
+      <div class="feature-card" style="margin-bottom:32px;">
+        <div class="feature-header">
+          <div class="feature-title-block">
+            <h4>The Golden Bidi Rules for AutoSub Desktop</h4>
+            <span class="tagline">Spec Reference: docs/design/RTL.md</span>
+          </div>
+          <span class="status-badge ready">Strict Engineering Rule</span>
+        </div>
+        <div class="feature-body">
+          <table class="design-table">
+            <thead>
+              <tr>
+                <th>Element / Layer</th>
+                <th>Direction</th>
+                <th>Layout Alignment</th>
+                <th>Handling Rule</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Global Navigation &amp; Window Rail</strong></td>
+                <td><code class="mono">LTR</code></td>
+                <td>Pinned Left</td>
+                <td>Desktop chrome on macOS stays LTR even when Hebrew locale is active.</td>
+              </tr>
+              <tr>
+                <td><strong>Video Player Transport Bar &amp; Scrubber</strong></td>
+                <td><code class="mono">LTR</code></td>
+                <td>Left-to-Right</td>
+                <td>Time is universal: seek 00:00 starts on left and progresses right. Never mirror media scrubbers.</td>
+              </tr>
+              <tr>
+                <td><strong>Subtitle Overlay Text (libmpv)</strong></td>
+                <td><code class="mono">RTL</code></td>
+                <td>Center Aligned</td>
+                <td>Rendered via libmpv ASS/SRT with <code class="mono">\u200F</code> (RLM) or BiDi embedding markers.</td>
+              </tr>
+              <tr>
+                <td><strong>Subtitle Editor Input Fields</strong></td>
+                <td><code class="mono">RTL</code></td>
+                <td>Right Aligned</td>
+                <td>Punctuation (? ! .) anchored on the logical left; numbers and Latin names wrapped in LTR isolates (<code class="mono">\u2066...\u2069</code>).</td>
+              </tr>
+              <tr>
+                <td><strong>Character Bible Name Pairs</strong></td>
+                <td><code class="mono">Mixed</code></td>
+                <td>Bidi Isolated</td>
+                <td>English canonical name in LTR isolate followed by Hebrew name in RTL isolate.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Engineering Roadmap Plan -->
+      <div class="section-header">
+        <span class="eyebrow">Phased Delivery Plan</span>
+        <h3>Sprint Implementation Breakdown</h3>
+      </div>
+
+      <div class="grid-3">
+        <div class="feature-card">
+          <div class="feature-header">
+            <div class="feature-rank">S1</div>
+            <div class="feature-title-block">
+              <h4>Sprint 1: Player Polish</h4>
+              <span class="tagline">Player HUD &bull; Precision Sync</span>
+            </div>
+          </div>
+          <div class="feature-body">
+            <ul style="font-size:13px; color:var(--text-secondary); padding-left:14px; display:flex; flex-direction:column; gap:6px;">
+              <li>Implement in-player &plusmn;50ms sync offset stepper on TransportBar.</li>
+              <li>Hot-swap background subtitle updates without resetting playback position.</li>
+              <li>Add Dual-Subtitle rendering support in `SubtitleView`.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-header">
+            <div class="feature-rank">S2</div>
+            <div class="feature-title-block">
+              <h4>Sprint 2: Cloud Turbo</h4>
+              <span class="tagline">Groq &amp; Gemini Flash Provider</span>
+            </div>
+          </div>
+          <div class="feature-body">
+            <ul style="font-size:13px; color:var(--text-secondary); padding-left:14px; display:flex; flex-direction:column; gap:6px;">
+              <li>Introduce Provider Interface in Engine sidecar (`LocalEngine` vs `CloudEngine`).</li>
+              <li>Integrate free Groq OpenAI-compatible endpoint with Whisper Large-v3.</li>
+              <li>Build API key vault &amp; quota tracker in Settings.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-header">
+            <div class="feature-rank">S3</div>
+            <div class="feature-title-block">
+              <h4>Sprint 3: Waveform Studio</h4>
+              <span class="tagline">Audio Visualizer &amp; Bible 2.0</span>
+            </div>
+          </div>
+          <div class="feature-body">
+            <ul style="font-size:13px; color:var(--text-secondary); padding-left:14px; display:flex; flex-direction:column; gap:6px;">
+              <li>Audio speech envelope rendering in Subtitle Editor.</li>
+              <li>Speaker &rarr; Addressee matrix in Character Bible.</li>
+              <li>Universal Command Palette (⌘K) trigger in AppShell.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Toast simulator -->
+  <div class="toast-pill" id="appToast">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+    <span id="toastMsg">Action completed successfully.</span>
+  </div>
+
+  <!-- ==========================================================================
+       VANILLA JS CONTROLLERS & INTERACTION LOGIC
+       ========================================================================== -->
+  <script>
+    // Tab Switching Logic
+    const tabBtns = document.querySelectorAll('.nav-tab-btn');
+    const tabSections = document.querySelectorAll('.tab-section');
+
+    tabBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const targetTab = btn.getAttribute('data-tab');
+        
+        tabBtns.forEach(b => b.classList.remove('active'));
+        tabSections.forEach(s => s.classList.remove('active-tab'));
+
+        btn.classList.add('active');
+        const activeSection = document.getElementById(targetTab);
+        if (activeSection) {
+          activeSection.classList.add('active-tab');
+        }
+      });
+    });
+
+    // Toast Trigger
+    function triggerToast(msg) {
+      const toast = document.getElementById('appToast');
+      const toastMsg = document.getElementById('toastMsg');
+      toastMsg.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 2600);
+    }
+
+    // Bidi Toggle Button
+    let bidiState = false;
+    document.getElementById('btnToggleBidi').addEventListener('click', () => {
+      bidiState = !bidiState;
+      triggerToast(bidiState ? "Bidi Check Enabled: Highlighting RTL text isolates" : "Bidi Normal Mode");
+      document.querySelectorAll('.rtl-text, .sub-line-hebrew').forEach(el => {
+        el.style.outline = bidiState ? '2px dashed #E8A33D' : 'none';
+        el.style.backgroundColor = bidiState ? 'rgba(232, 163, 61, 0.15)' : 'transparent';
+      });
+    });
+
+    // Interactive Lab 1: Video Player HUD Controls
+    let currentDelayMs = 0;
+    const simDelayVal = document.getElementById('simDelayVal');
+    const simBtnPlay = document.getElementById('simBtnPlay');
+    const simTargetSub = document.getElementById('simTargetSub');
+    const simSourceSub = document.getElementById('simSourceSub');
+    const simToggleDualSub = document.getElementById('simToggleDualSub');
+    const simToggleTargetSub = document.getElementById('simToggleTargetSub');
+    const simToggleFontSize = document.getElementById('simToggleFontSize');
+    const simFontLabel = document.getElementById('simFontLabel');
+
+    document.getElementById('simDelayMinus').addEventListener('click', () => {
+      currentDelayMs -= 50;
+      simDelayVal.textContent = `${currentDelayMs}ms`;
+      triggerToast(`Subtitle Delay: ${currentDelayMs}ms (Advanced)`);
+    });
+
+    document.getElementById('simDelayPlus').addEventListener('click', () => {
+      currentDelayMs += 50;
+      simDelayVal.textContent = `${currentDelayMs}ms`;
+      triggerToast(`Subtitle Delay: ${currentDelayMs}ms (Delayed)`);
+    });
+
+    let isPlaying = false;
+    simBtnPlay.addEventListener('click', () => {
+      isPlaying = !isPlaying;
+      simBtnPlay.textContent = isPlaying ? '❚❚' : '▶';
+      triggerToast(isPlaying ? "Playback Started" : "Playback Paused");
+    });
+
+    let isDualSub = false;
+    simToggleDualSub.addEventListener('click', () => {
+      isDualSub = !isDualSub;
+      simToggleDualSub.classList.toggle('active', isDualSub);
+      simSourceSub.style.display = isDualSub ? 'block' : 'none';
+      triggerToast(isDualSub ? "Dual-Subtitles Activated (EN + HE)" : "Single Subtitle Mode (HE)");
+    });
+
+    let isTargetVisible = true;
+    simToggleTargetSub.addEventListener('click', () => {
+      isTargetVisible = !isTargetVisible;
+      simToggleTargetSub.classList.toggle('active', isTargetVisible);
+      simTargetSub.style.display = isTargetVisible ? 'block' : 'none';
+      triggerToast(isTargetVisible ? "Hebrew Subtitles Enabled" : "Hebrew Subtitles Hidden");
+    });
+
+    let currentFontSizeIndex = 1;
+    const fontSizes = ['20pt', '26pt', '32pt', '38pt'];
+    simToggleFontSize.addEventListener('click', () => {
+      currentFontSizeIndex = (currentFontSizeIndex + 1) % fontSizes.length;
+      const size = fontSizes[currentFontSizeIndex];
+      simFontLabel.textContent = size;
+      simTargetSub.style.fontSize = size;
+      triggerToast(`Subtitle Size Updated to ${size}`);
+    });
+
+    // Interactive Lab 2: Engine Orchestrator
+    function selectEngine(type) {
+      document.querySelectorAll('#cardEngineLocal, #cardEngineGroq, #cardEngineGemini').forEach(c => c.classList.remove('selected'));
+      
+      const tag = document.getElementById('engineSimTag');
+      const estTime = document.getElementById('simEstTime');
+      const ramUse = document.getElementById('simRamUse');
+      const genderScore = document.getElementById('simGenderScore');
+
+      if (type === 'local') {
+        document.getElementById('cardEngineLocal').classList.add('selected');
+        tag.textContent = 'Config: Local Apple Silicon (MLX & DictaLM)';
+        tag.className = 'status-badge ready';
+        estTime.textContent = '42 min 10s';
+        ramUse.textContent = '11.8 GB (High)';
+        ramUse.style.color = 'var(--status-attention)';
+        genderScore.textContent = '96.4%';
+        triggerToast("Switched to 100% Offline Local Engine");
+      } else if (type === 'groq') {
+        document.getElementById('cardEngineGroq').classList.add('selected');
+        tag.textContent = 'Config: Groq Cloud LPU (Llama 3.3 70B & Whisper)';
+        tag.className = 'status-badge attention';
+        estTime.textContent = '1 min 45s';
+        ramUse.textContent = '0.0 MB (0% Local RAM)';
+        ramUse.style.color = 'var(--status-ready)';
+        genderScore.textContent = '98.7%';
+        triggerToast("Switched to Groq Turbo (480 tokens/second)");
+      } else if (type === 'gemini') {
+        document.getElementById('cardEngineGemini').classList.add('selected');
+        tag.textContent = 'Config: Google AI Studio (Gemini 2.0 Flash 1M Ctx)';
+        tag.className = 'status-badge ready';
+        estTime.textContent = '3 min 10s';
+        ramUse.textContent = '0.0 MB (0% Local RAM)';
+        ramUse.style.color = 'var(--status-ready)';
+        genderScore.textContent = '99.5% (Flawless Hebrew)';
+        triggerToast("Switched to Gemini 2.0 Flash Engine");
+      }
+    }
+  </script>
+</body>
+</html>

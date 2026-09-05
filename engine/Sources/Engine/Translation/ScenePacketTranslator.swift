@@ -3,13 +3,37 @@ import Foundation
 public struct ScenePacket: Sendable {
     public var cueIndices: [Int]
     public var lines: [String]
+    /// Deterministically resolved speaker/addressee per line (AddresseeResolver),
+    /// parallel to `lines`. Empty when the ladder was not run — the prompt then
+    /// falls back to plain numbered lines exactly as before.
+    public var bindings: [DialogueBinding]
+    /// 1–2 sentence situational summary of the scene this packet belongs to
+    /// (SceneSynopsis), injected so ambiguous lines are read in context.
+    public var synopsis: String?
 
-    public init(cueIndices: [Int], lines: [String]) {
+    public init(cueIndices: [Int], lines: [String],
+                bindings: [DialogueBinding] = [], synopsis: String? = nil) {
         self.cueIndices = cueIndices
         self.lines = lines
+        self.bindings = bindings
+        self.synopsis = synopsis
     }
 
     public var isEmpty: Bool { lines.isEmpty }
+
+    /// The binding for a local (0-based) line, or nil when none was resolved.
+    public func binding(at local0: Int) -> DialogueBinding? {
+        local0 >= 0 && local0 < bindings.count ? bindings[local0] : nil
+    }
+
+    /// A sub-packet over a local index range, carrying the matching bindings.
+    public func slice(_ range: Range<Int>) -> ScenePacket {
+        ScenePacket(
+            cueIndices: Array(cueIndices[range]),
+            lines: Array(lines[range]),
+            bindings: bindings.isEmpty ? [] : Array(bindings[range]),
+            synopsis: synopsis)
+    }
 }
 
 public enum ScenePacketer {
@@ -18,33 +42,50 @@ public enum ScenePacketer {
     /// Packets split on large timing gaps and on conservative context limits.
     /// Defaults fit the current 4096-token llama context better than the larger
     /// scene packets we should test once the server runs at 8k/16k context.
+    /// - `bindingsByCueIndex`: AddresseeResolver output, keyed by `SubtitleCue.index`.
+    /// - `sceneIdByCueIndex` / `synopsisBySceneId`: SceneSegmenter output. When given,
+    ///   a packet NEVER spans two narrative scenes (a packet carries exactly one
+    ///   synopsis, so it must describe every line in it) and inherits its synopsis.
     public static func packets(
         cues: [SubtitleCue],
         maxLines: Int = 24,
         maxSourceChars: Int = 2_400,
-        sceneGapMs: Int = 2_500
+        sceneGapMs: Int = 2_500,
+        bindingsByCueIndex: [Int: DialogueBinding] = [:],
+        sceneIdByCueIndex: [Int: Int] = [:],
+        synopsisBySceneId: [Int: String] = [:]
     ) -> [ScenePacket] {
         var out: [ScenePacket] = []
         var indices: [Int] = []
         var lines: [String] = []
+        var bindings: [DialogueBinding] = []
         var chars = 0
         var previousEnd: Int?
+        var currentScene: Int?
 
         func flush() {
             guard !lines.isEmpty else { return }
-            out.append(ScenePacket(cueIndices: indices, lines: lines))
+            out.append(ScenePacket(
+                cueIndices: indices, lines: lines,
+                bindings: bindings.count == lines.count ? bindings : [],
+                synopsis: currentScene.flatMap { synopsisBySceneId[$0] }))
             indices.removeAll(keepingCapacity: true)
             lines.removeAll(keepingCapacity: true)
+            bindings.removeAll(keepingCapacity: true)
             chars = 0
         }
 
         for cue in PromptTextSanitizer.sanitizedCues(cues) {
             let gap = previousEnd.map { cue.startMs - $0 } ?? 0
+            let scene = sceneIdByCueIndex[cue.index]
+            let leftScene = !lines.isEmpty && scene != nil && scene != currentScene
             let wouldOverflow = !lines.isEmpty
                 && (lines.count >= maxLines || chars + cue.text.count > maxSourceChars)
-            if gap >= sceneGapMs || wouldOverflow { flush() }
+            if gap >= sceneGapMs || wouldOverflow || leftScene { flush() }
+            if lines.isEmpty { currentScene = scene }
             indices.append(cue.index)
             lines.append(cue.text)
+            if let b = bindingsByCueIndex[cue.index] { bindings.append(b) }
             chars += cue.text.count
             previousEnd = cue.endMs
         }
@@ -352,16 +393,11 @@ public struct ScenePacketTranslator: Sendable {
         Output one numbered translation per requested line, in the form "<number>. <translation>". \
         No other lines, no notes.
         """)
-        if !knownCharacters.isEmpty {
-            let list = knownCharacters.sorted { $0.key < $1.key }
-                .map { "\($0.key)=\($0.value)" }.joined(separator: ", ")
-            parts.append("KNOWN CHARACTER GENDERS: \(list)")
-        }
-        if let g = glossaryBlock() { parts.append(g) }
+        if !packet.bindings.isEmpty { parts.append(Self.bindingRules) }
+        parts.append(Self.noHedgeRule)
+        parts.append(contentsOf: contextBlocks(packet: packet, knownCharacters: knownCharacters))
         parts.append("--- SOURCE LINES ---")
-        for (i, line) in packet.lines.enumerated() {
-            parts.append("\(i + 1). \(line)")
-        }
+        parts.append(contentsOf: sourceLineBlock(packet))
         parts.append("--- TRANSLATIONS (only \(wanted)) ---")
         return parts.joined(separator: "\n")
     }
@@ -376,14 +412,8 @@ public struct ScenePacketTranslator: Sendable {
     ) async throws -> [Int: String] {
         stats.splits += 1
         let mid = packet.lines.count / 2
-        let left = ScenePacket(
-            cueIndices: Array(packet.cueIndices[..<mid]),
-            lines: Array(packet.lines[..<mid])
-        )
-        let right = ScenePacket(
-            cueIndices: Array(packet.cueIndices[mid...]),
-            lines: Array(packet.lines[mid...])
-        )
+        let left = packet.slice(0 ..< mid)
+        let right = packet.slice(mid ..< packet.lines.count)
         var out = try await translatePacket(
             left,
             targetLang: targetLang,
@@ -436,6 +466,86 @@ public struct ScenePacketTranslator: Sendable {
         return out
     }
 
+
+    // MARK: - Deterministic bindings in the prompt
+
+    /// `"[SPEAKER: Maya (F)] [TO: Danny (M)] "` — the resolved facts for one line.
+    ///
+    /// We hand the model the ANSWER rather than asking it to infer who is talking to
+    /// whom, because the ladder (AddresseeResolver) resolves it deterministically
+    /// from the dialogue and the model does not. Returns "" when nothing was
+    /// resolved, so an unbound packet reads exactly as it did before.
+    static func bindingTag(_ b: DialogueBinding) -> String {
+        var tags: [String] = []
+        if let speaker = b.speaker {
+            tags.append("[SPEAKER: \(speaker) (\(mark(b.speakerGender)))]")
+        }
+        switch b.method {
+        case .groupAddress:
+            tags.append("[TO: a group (\(mark(b.addresseeGender)) plural)]")
+        case .unknown:
+            tags.append("[TO: unknown - use gender-neutral phrasing]")
+        default:
+            if let name = b.addressee {
+                tags.append("[TO: \(name) (\(mark(b.addresseeGender)))]")
+            } else {
+                tags.append("[TO: unknown - use gender-neutral phrasing]")
+            }
+        }
+        return tags.isEmpty ? "" : tags.joined(separator: " ") + " "
+    }
+
+    private static func mark(_ g: Gender) -> String {
+        switch g {
+        case .m: return "M"
+        case .f: return "F"
+        case .nb, .unknown: return "?"
+        }
+    }
+
+    /// The rules that make the tags binding — only emitted when a packet has them.
+    static let bindingRules = """
+    - Each line is prefixed with [SPEAKER: name (M/F)] and [TO: ...]. These are \
+    RESOLVED FACTS about the scene, not guesses: inflect 1st-person forms for the \
+    SPEAKER and 2nd-person forms (verbs, "you", imperatives) for the addressee in [TO], \
+    by both gender and number. Use plural 2nd-person forms ONLY for [TO: a group ...].
+    - NEVER copy the tags into your output. Translate only the text after them.
+    - [TO: unknown] means the dialogue does not determine the addressee. Rephrase the \
+    line so NO gendered second-person form appears at all (use an infinitive, an \
+    impersonal construction, or a noun phrase). Do not guess a gender.
+    """
+
+    /// Applies to every packet, bound or not: a hedge is never acceptable output.
+    static let noHedgeRule = """
+    - NEVER write two gendered forms together as a hedge - not with a slash \
+    (\u{05D0}\u{05EA}/\u{05D0}\u{05EA}\u{05D4}) and not with brackets \
+    (\u{05D9}\u{05D5}\u{05D3}\u{05E2}(\u{05EA})). Choose one form, or rephrase so \
+    the distinction never arises.
+    """
+
+    /// Scene synopsis + character genders + glossary, in the order the model reads them.
+    private func contextBlocks(packet: ScenePacket, knownCharacters: [String: String]) -> [String] {
+        var parts: [String] = []
+        if let synopsis = packet.synopsis, !synopsis.isEmpty {
+            parts.append("SCENE: \(synopsis)")
+        }
+        if !knownCharacters.isEmpty {
+            let list = knownCharacters.sorted { $0.key < $1.key }
+                .map { "\($0.key)=\($0.value)" }.joined(separator: ", ")
+            parts.append("KNOWN CHARACTER GENDERS: \(list)")
+        }
+        if let g = glossaryBlock() { parts.append(g) }
+        return parts
+    }
+
+    /// Numbered source lines, each prefixed with its resolved bindings.
+    private func sourceLineBlock(_ packet: ScenePacket) -> [String] {
+        packet.lines.enumerated().map { i, line in
+            let tag = packet.binding(at: i).map(Self.bindingTag) ?? ""
+            return "\(i + 1). \(tag)\(line)"
+        }
+    }
+
     func buildPrompt(
         packet: ScenePacket,
         targetLang: String,
@@ -463,17 +573,11 @@ public struct ScenePacketTranslator: Sendable {
         - Keep glossary names consistent when known.
         - After the JSON object, output a newline followed by END.
         """)
-        if !knownCharacters.isEmpty {
-            let list = knownCharacters.sorted { $0.key < $1.key }
-                .map { "\($0.key)=\($0.value)" }
-                .joined(separator: ", ")
-            parts.append("KNOWN CHARACTER GENDERS: \(list)")
-        }
-        if let g = glossaryBlock() { parts.append(g) }
+        if !packet.bindings.isEmpty { parts.append(Self.bindingRules) }
+        parts.append(Self.noHedgeRule)
+        parts.append(contentsOf: contextBlocks(packet: packet, knownCharacters: knownCharacters))
         parts.append("--- SOURCE LINES ---")
-        for (i, line) in packet.lines.enumerated() {
-            parts.append("\(i + 1). \(line)")
-        }
+        parts.append(contentsOf: sourceLineBlock(packet))
         parts.append("--- JSON ---")
         return parts.joined(separator: "\n")
     }
@@ -506,17 +610,11 @@ public struct ScenePacketTranslator: Sendable {
         "<number>. <translation>". No JSON, no notes.
         After the final numbered translation, output a newline followed by END.
         """)
-        if !knownCharacters.isEmpty {
-            let list = knownCharacters.sorted { $0.key < $1.key }
-                .map { "\($0.key)=\($0.value)" }
-                .joined(separator: ", ")
-            parts.append("KNOWN CHARACTER GENDERS: \(list)")
-        }
-        if let g = glossaryBlock() { parts.append(g) }
+        if !packet.bindings.isEmpty { parts.append(Self.bindingRules) }
+        parts.append(Self.noHedgeRule)
+        parts.append(contentsOf: contextBlocks(packet: packet, knownCharacters: knownCharacters))
         parts.append("--- SOURCE LINES ---")
-        for (i, line) in packet.lines.enumerated() {
-            parts.append("\(i + 1). \(line)")
-        }
+        parts.append(contentsOf: sourceLineBlock(packet))
         parts.append("--- TRANSLATIONS ---")
         return parts.joined(separator: "\n")
     }

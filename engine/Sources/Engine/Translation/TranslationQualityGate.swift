@@ -61,7 +61,69 @@ public enum TranslationQualityGate {
         .init("David, you are very strong.", expect: ["חזק", "אתה"], forbid: ["חזקה"]),
         .init("Sarah, you are very smart.", expect: ["חכמה", "את"], forbid: ["חכם", "אתה"]),
         .init("David, are you ready to go?", expect: ["מוכן", "אתה"], forbid: ["מוכנה"]),
+        // 2nd-person PLURAL — a group address. Hebrew has no gender-neutral plural,
+        // so a mixed/unspecified group takes the masculine plural (מוכנים) and an
+        // explicitly female group the feminine plural (מוכנות). Getting the NUMBER
+        // wrong (מוכן) is as wrong as getting the gender wrong.
+        .init("Everyone, are you ready to go?", expect: ["מוכנים"],
+              forbid: ["מוכן", "מוכנה", "מוכנות"]),
+        .init("Ladies, are you ready to go?", expect: ["מוכנות"],
+              forbid: ["מוכנים", "מוכנה"]),
     ]
+
+    /// Context-sensitivity probes: English lines whose correct Hebrew word is
+    /// determined ONLY by the scene, not by the sentence. They are the measurable
+    /// case for scene synopsis injection (SceneSynopsis) — without the synopsis a
+    /// model picks the statistically common sense and is wrong half the time.
+    public struct ContextProbe: Sendable {
+        public var synopsis: String
+        public var source: String
+        public var expectAny: [String]
+        public var forbidAny: [String]
+        public init(synopsis: String, source: String, expect: [String], forbid: [String]) {
+            self.synopsis = synopsis
+            self.source = source
+            self.expectAny = expect
+            self.forbidAny = forbid
+        }
+    }
+
+    public static let contextProbes: [ContextProbe] = [
+        .init(synopsis: "Two players are warming up before a baseball game.",
+              source: "Hand me the bat.",
+              expect: ["מחבט"], forbid: ["עטלף"]),
+        .init(synopsis: "A cave explorer shines a torch at the ceiling and something moves.",
+              source: "Look at the bat.",
+              expect: ["עטלף"], forbid: ["מחבט"]),
+        .init(synopsis: "Two hikers are following a river through a valley.",
+              source: "Wait for me on the bank.",
+              expect: ["גדה", "גדת"], forbid: ["בנק"]),
+        .init(synopsis: "A robbery crew is parked outside a downtown branch office.",
+              source: "Wait for me at the bank.",
+              expect: ["בנק"], forbid: ["גדה"]),
+    ]
+
+    /// Score context probes: translation index → Hebrew, parallel to `contextProbes`.
+    public static func scoreContext(approach: String,
+                                    translations: [Int: String]) -> GenderGateResult {
+        var correct = 0
+        var failures: [String] = []
+        for (i, probe) in contextProbes.enumerated() {
+            let out = translations[i] ?? ""
+            let words = hebrewWords(out)
+            let hasExpected = probe.expectAny.contains { e in words.contains { $0.contains(e) } }
+            let hasForbidden = probe.forbidAny.contains { f in words.contains { $0.contains(f) } }
+            if hasExpected && !hasForbidden {
+                correct += 1
+            } else {
+                failures.append("“\(probe.source)” [\(probe.synopsis)] → “\(out)”")
+            }
+        }
+        return GenderGateResult(
+            approach: approach, total: contextProbes.count, correct: correct,
+            accuracy: contextProbes.isEmpty ? 0 : Double(correct) / Double(contextProbes.count),
+            failures: failures)
+    }
 
     /// Build evenly-timed cues (small gaps so ScenePacketer keeps them in one scene).
     public static func sceneCues() -> [SubtitleCue] {
@@ -81,10 +143,14 @@ public enum TranslationQualityGate {
             let words = hebrewWords(out)
             let hasExpected = expect.contains { words.contains($0) }
             let hasForbidden = probe.forbidAny.contains { words.contains($0) }
-            if hasExpected && !hasForbidden {
+            // A dual-form hedge (את/אתה) is a failure even when it technically
+            // contains the expected token: it is the model refusing to decide.
+            let hedged = TranslationOutputValidator.genderHedge(out)
+            if hasExpected && !hasForbidden && !hedged {
                 correct += 1
             } else {
-                let why = !hasExpected ? "missing \(expect)" : "has wrong-gender \(probe.forbidAny)"
+                let why = hedged ? "hedged (dual gender form)"
+                    : (!hasExpected ? "missing \(expect)" : "has wrong-gender \(probe.forbidAny)")
                 failures.append("“\(probe.source)” → “\(out)”  [\(why)]")
             }
         }

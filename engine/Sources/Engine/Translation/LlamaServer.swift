@@ -80,14 +80,20 @@ public actor LlamaServer {
     private let modelURL: URL
     private let gpuLayers: Int
     private let contextSize: Int
+    private let config: InferenceConfig
 
     // Dedicated, uncommon port so we never collide with (and accidentally talk
     // to) some other local dev server on 8080. The engine daemon itself uses 8765.
-    public init(modelURL: URL, port: Int = 8791, gpuLayers: Int = 999, contextSize: Int = 4096) {
+    ///
+    /// `contextSize` defaults to whatever THIS machine can sustain (InferenceConfig),
+    /// so a 16 GB Mac doesn't inherit the 24 GB machine's 8k window and swap.
+    public init(modelURL: URL, port: Int = 8791, gpuLayers: Int = 999,
+                contextSize: Int? = nil, config: InferenceConfig = .current) {
         self.modelURL = modelURL
         self.port = port
         self.gpuLayers = gpuLayers
-        self.contextSize = contextSize
+        self.config = config
+        self.contextSize = contextSize ?? config.contextSize
     }
 
     /// Pick a model file from a directory (first .gguf, sorted for determinism).
@@ -114,33 +120,38 @@ public actor LlamaServer {
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: exe)
-        proc.arguments = [
+        // Flags are DERIVED from the machine profile, not hardcoded — see
+        // InferenceConfig. Two of them are load-bearing beyond performance:
+        //   -np 1  one slot. Extra slots reserve KV cache we never use (the pipeline
+        //          awaits serially); on a memory-tight Mac that reservation alone
+        //          tips the system into swap and collapses decode (~3 vs ~20 tok/s).
+        //   NO --model-draft, EVER. Draft-model speculative decoding puts a second
+        //          model's weights, KV cache and Metal scratchpads in this process
+        //          and Metal aborts with kIOGPUCommandBufferCallbackErrorOutOfMemory
+        //          on 16 GB Apple Silicon. The assert below makes that unmissable if
+        //          anyone ever adds the flag.
+        var args = [
             "-m", modelURL.path,
             "--host", host, "--port", String(port),
             "-ngl", String(gpuLayers),     // offload all layers to Metal
             "-c", String(contextSize),
-            // ONE slot. The pipeline sends chunks serially (one await at a time), so
-            // extra slots are never used — but `-np` auto reserves ~4 slots' worth of
-            // KV cache, which on a 24 GB Mac running the 12B alongside the app tips the
-            // system into SWAP and collapses decode (~3 tok/s vs ~20). One slot keeps
-            // the footprint lean; concurrency wouldn't help anyway (measured 1.13x).
             "-np", "1",
-            // Throughput knobs — measured on M4 Pro / DictaLM-12B Q4_K_M. The 12B
-            // decode is memory-bandwidth-bound (~19 tok/s single-stream, ~134 GB/s
-            // of a ~273 GB/s bus), so request-level parallelism barely helps (1.13x).
-            // What DOES help, losslessly:
-            //   -fa on            force Flash Attention (faster attn, less KV memory).
-            //   --spec-type ngram-cache  n-gram speculative decoding — NO draft model,
-            //                     output is identical to greedy; ~1.2x measured on the
-            //                     numbered-batch translation format.
-            //   -ctk/-ctv q8_0    quantize the KV cache — frees memory for context with
-            //                     negligible quality impact.
+            // -fa on: Flash Attention — faster attention, smaller KV cache. Lossless.
             "-fa", "on",
-            "--spec-type", "ngram-cache",
-            "--spec-draft-n-max", "8",
-            "-ctk", "q8_0", "-ctv", "q8_0",
             "--no-webui",
         ]
+        if config.ngramSpeculation {
+            // n-gram speculative decoding: NO draft model, no extra weights, output
+            // identical to greedy; ~1.2x measured on the numbered-batch format.
+            args += ["--spec-type", "ngram-cache", "--spec-draft-n-max", "8"]
+        }
+        if config.quantizeKVCache {
+            args += ["-ctk", "q8_0", "-ctv", "q8_0"]
+        }
+        assert(!args.contains("--model-draft") && !args.contains("-md"),
+               "draft-model speculative decoding is unsupported on Apple Silicon "
+                   + "(Metal buffer OOM); use --spec-type ngram-cache instead")
+        proc.arguments = args
         // llama-server is VERY chatty. Discard its output — piping without
         // draining fills the 64 KB pipe buffer and DEADLOCKS the server (it
         // blocks on write, then stops answering). TODO(daemon): tee to a log file.
@@ -212,8 +223,20 @@ public struct LlamaServerClient: LlamaChat {
                                    maxTokens: maxTokens, temperature: temperature).text
     }
 
+    /// Every request passes through `GPUGate`, so on a machine that cannot afford
+    /// ASR and LLM running at once they interleave at REQUEST granularity rather
+    /// than one stage blocking the other for minutes. On a roomier Mac the gate is
+    /// a pass-through and this costs nothing but an await.
     public func completeDetailed(system: String?, user: String,
                                  maxTokens: Int = 256, temperature: Double = 0.2) async throws -> LlamaResult {
+        try await GPUGate.shared.withExclusiveAccess {
+            try await self.post(system: system, user: user,
+                                maxTokens: maxTokens, temperature: temperature)
+        }
+    }
+
+    private func post(system: String?, user: String,
+                      maxTokens: Int, temperature: Double) async throws -> LlamaResult {
         var messages: [[String: String]] = []
         if let system, !system.isEmpty { messages.append(["role": "system", "content": system]) }
         messages.append(["role": "user", "content": user])

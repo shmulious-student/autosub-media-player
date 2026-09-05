@@ -72,6 +72,9 @@ public struct TitleContext: Sendable {
 public actor SubtitlePipeline {
     private let modelPaths: ModelPaths
     private let whisperModelName: String?
+    /// What THIS Mac can sustain — context size, whether both model tiers may be
+    /// warm at once, whether ASR and LLM must be serialized (see InferenceConfig).
+    private let machineConfig: InferenceConfig
 
     // Warm DictaLM servers, started lazily and reused, keyed by model path so a
     // strategy that needs BOTH the 12B (quality) and 7B (fast) keeps each loaded
@@ -85,9 +88,11 @@ public actor SubtitlePipeline {
     /// `whisperModelName` nil ⇒ auto-resolve the best INSTALLED model (turbo ▸ … ▸ base)
     /// at first use, so we get large-v3-turbo accuracy when present without breaking on a
     /// base-only install. Pass an explicit name to pin one.
-    public init(modelPaths: ModelPaths, whisperModelName: String? = nil) {
+    public init(modelPaths: ModelPaths, whisperModelName: String? = nil,
+                machineConfig: InferenceConfig = .current) {
         self.modelPaths = modelPaths
         self.whisperModelName = whisperModelName
+        self.machineConfig = machineConfig
     }
 
     /// The warm WhisperKit instance, created once and reused.
@@ -104,7 +109,13 @@ public actor SubtitlePipeline {
     private func warmChat(in modelDir: URL) async throws -> any LlamaChat {
         let model = try LlamaServer.findModel(in: modelDir)
         if let c = chats[model.path] { return c }
-        let server = LlamaServer(modelURL: model, contextSize: 8192)
+        // On a machine that can't hold both tiers, keeping the other model resident
+        // is what pushes it into swap — so evict it before loading this one. Roomier
+        // machines keep both warm and pay no reload when the strategy switches tiers.
+        if !machineConfig.allowsBothModelTiersWarm, !servers.isEmpty {
+            await shutdown()
+        }
+        let server = LlamaServer(modelURL: model, config: machineConfig)
         try await server.start()
         let client = await server.client()
         servers[model.path] = server
@@ -246,9 +257,16 @@ public actor SubtitlePipeline {
             onProgress(0.15, "asr")
             // Bias Whisper with the audio track's declared language when we recognize it
             // (else nil ⇒ auto-detect) — fewer mis-detections on short/noisy openings.
-            let asr = try await warmASR()
-                .transcribe(samples: decoded.samples, sampleRate: decoded.sampleRate,
-                            sourceLanguageHint: originalHint)
+            // ASR runs on the ANE and the LLM on the GPU, so they CAN overlap — but
+            // they share unified memory bandwidth, and on a memory-tight Mac the
+            // overlap is what causes swap. The gate is a pass-through where the
+            // machine can afford it (InferenceConfig.serializeASRAndLLM).
+            let warmASRService = warmASR()
+            let asr = try await GPUGate.shared.withExclusiveAccess {
+                try await warmASRService.transcribe(
+                    samples: decoded.samples, sampleRate: decoded.sampleRate,
+                    sourceLanguageHint: originalHint)
+            }
             onProgress(0.45, "segment")
             // Deterministic validation: collapse ASR repetition loops, drop empties,
             // flag low-confidence / too-fast cues before they become the source text.
@@ -256,6 +274,34 @@ public actor SubtitlePipeline {
             cues = validated.cues
             sourceQaFlags = validated.qaFlags
             sourceLang = asr.language
+        }
+
+        // 1b. SYNC an EXTERNALLY-SOURCED subtitle to THIS release.
+        //     A file fetched online (or supplied by the user) was timed against some
+        //     other cut of the film and is routinely seconds out — the single most
+        //     visible defect a viewer can see, and one no amount of translation
+        //     quality makes up for. alass compares the cue pattern against the audio
+        //     and removes the global offset in under a second, with --no-split so it
+        //     cannot chop a short clip into wrongly-shifted blocks.
+        //
+        //     Embedded tracks are left alone: they ship with the file and are already
+        //     in sync. ASR cues come from the audio itself, so they cannot drift.
+        //     (The DTW/Theil-Sen stage that also removes STRETCH needs ASR word
+        //     timings, which this path deliberately skips — SubtitleSync.refine does
+        //     that work whenever a caller has them.)
+        if source == .online, let sp = sourceSubtitlePath, AlassRunner.isAvailable {
+            onProgress(0.30, "sync")
+            let tmp = FileManager.default.temporaryDirectory
+                .appendingPathComponent("autosub-alass-\(UUID().uuidString).srt").path
+            defer { try? FileManager.default.removeItem(atPath: tmp) }
+            let (synced, report) = SubtitleSync.synchronize(
+                cues: cues, words: [], videoPath: videoPath,
+                subtitlePath: sp, alassOutputPath: tmp)
+            if report.alassApplied {
+                cues = synced
+            } else {
+                sourceQaFlags.append("sync-skipped")
+            }
         }
 
         // 2. Translate. ONE lean scene-packet path (gender/scene context in the prompt,
@@ -268,16 +314,49 @@ public actor SubtitlePipeline {
         // those SENTENCE units and redistribute each translation back across its
         // original cues — every cue keeps its exact timing, so the track can't drift.
         let sentences = SentenceRegrouper.group(sanitized)
-        let sentenceCues = sentences.enumerated().map { (i, g) in
+        // Lift "DANNY: …" speaker labels (SDH/broadcast subs) out of the text and
+        // into speakerId — free ground truth the addressee ladder needs, and noise
+        // the model would otherwise translate.
+        let sentenceCues = SpeakerTags.apply(sentences.enumerated().map { (i, g) in
             SubtitleCue(index: i, startMs: g.startMs, endMs: g.endMs, text: g.text)
-        }
-        let packets = ScenePacketer.packets(cues: sentenceCues)
+        })
         // Known-character gender glossary: start from any job-supplied map (e.g. seeded
         // from TMDB credits — actor + character names → gender), then let the curated
         // series bible WIN on conflict. Injected into every prompt as KNOWN CHARACTER
         // GENDERS so speaker/addressee inflection is deterministic, not guessed.
         var glossary = characters
         glossary.merge(BibleCache.load(videoPath: videoPath)) { _, bible in bible }
+
+        // 2a. DIALOGUE PRE-RESOLUTION (deterministic, before any translation prompt).
+        //     Narrative scenes → a cached situational synopsis per scene; the
+        //     addressee ladder → an explicit [SPEAKER]/[TO] binding per line. Both go
+        //     into the prompt as FACTS, so the model never has to guess who is being
+        //     addressed (the source of Hebrew misgendering and את/אתה hedges).
+        let scenes = SceneSegmenter.segment(cues: sentenceCues)
+        let bindings = AddresseeResolver.resolve(
+            cues: sentenceCues, characters: glossary, scenes: scenes)
+        var bindingByCue: [Int: DialogueBinding] = [:]
+        for b in bindings { bindingByCue[b.cueIndex] = b }
+
+        var synopses: [Int: String] = [:]
+        if !scenes.isEmpty {
+            onProgress(0.50, "scenes")
+            // Best-effort and cheap: one small completion per scene on the FAST
+            // model, cached on disk, then prompt-cached for every packet in the
+            // scene. A failure here costs context, never correctness.
+            let synopsisChat = try? await fastChat()
+            if let synopsisChat {
+                synopses = await SceneSynopsis.generate(
+                    scenes: scenes, cues: sentenceCues, chat: synopsisChat,
+                    cache: SceneSynopsisCache(videoPath: videoPath))
+            }
+        }
+
+        let packets = ScenePacketer.packets(
+            cues: sentenceCues,
+            bindingsByCueIndex: bindingByCue,
+            sceneIdByCueIndex: SceneSynopsis.sceneIdByCueIndex(scenes: scenes, cues: sentenceCues),
+            synopsisBySceneId: synopses)
 
         // [sentence ordinal: Hebrew] → split each sentence across its source cues.
         func applyAndWrite(_ bySentence: [Int: String]) throws -> String {

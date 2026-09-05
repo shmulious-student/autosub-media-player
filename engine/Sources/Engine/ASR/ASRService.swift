@@ -87,8 +87,11 @@ public actor WhisperKitASR: ASRService {
     /// large ▸ medium ▸ small ▸ base ▸ tiny). Falls back to "openai_whisper-base" so
     /// a fresh install (only base present) still runs — the accuracy win simply waits
     /// until a bigger model is downloaded. (WhisperKit loads local-only: download=false.)
+    /// `maxTier` caps the choice for memory-constrained Macs (InferenceConfig):
+    /// large-v3-turbo is worth its ~1.6 GB on a 16 GB+ machine and is not on 8 GB.
     public static func resolveBestModel(
-        modelPaths: ModelPaths, fileManager: FileManager = .default
+        modelPaths: ModelPaths, fileManager: FileManager = .default,
+        maxTier: String = InferenceConfig.current.maxWhisperTier
     ) -> String {
         let dir = modelPaths.whisperKit
         let entries = (try? fileManager.contentsOfDirectory(atPath: dir.path)) ?? []
@@ -109,7 +112,13 @@ public actor WhisperKitASR: ASRService {
             if n.contains("tiny") { return 1 }
             return 0
         }
-        return folders.filter { rank($0) > 0 }.max { rank($0) < rank($1) } ?? "openai_whisper-base"
+        let ceiling = rank(maxTier) > 0 ? rank(maxTier) : 7
+        let allowed = folders.filter { rank($0) > 0 && rank($0) <= ceiling }
+        // Nothing within the ceiling installed → fall back to the smallest present,
+        // which is still better than failing to transcribe at all.
+        let pick = allowed.max { rank($0) < rank($1) }
+            ?? folders.filter { rank($0) > 0 }.min { rank($0) < rank($1) }
+        return pick ?? "openai_whisper-base"
     }
 
     /// Map an ISO-639 audio-track tag (often 639-2/B like "eng", "ger", "heb") to the

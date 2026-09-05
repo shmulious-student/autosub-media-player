@@ -23,6 +23,7 @@ public enum TranslationOutputValidator {
         case addition       // far too long vs the source (likely hallucinated text)
         case repetition     // a word / phrase loops (classic decode failure)
         case numberDrift    // a multi-digit number in the source is absent from the output
+        case genderHedge    // a dual-gender hedge (את/אתה, יודע/ת, יודע(ת))
     }
 
     public struct Thresholds: Sendable {
@@ -94,6 +95,11 @@ public enum TranslationOutputValidator {
 
         if repetitionLoop(out) { return .repetition }
 
+        // A dual-gender hedge is a hard failure even though the line is otherwise
+        // faithful: it is the model refusing to commit, and it is never how a human
+        // subtitler writes. The addressee ladder exists so the model never has to.
+        if genderHedge(out) { return .genderHedge }
+
         // Length-ratio + number checks only on substantial source lines.
         if src.count >= t.minSourceCharsForRatio {
             let ratio = Double(out.count) / Double(src.count)
@@ -158,6 +164,32 @@ public enum TranslationOutputValidator {
         }
         if !cur.isEmpty { out.insert(cur) }
         return out
+    }
+
+    /// True when the line contains a DUAL-GENDER HEDGE — the model writing both
+    /// inflections instead of choosing one.
+    ///
+    /// Two shapes occur in practice:
+    ///   - slash:      `את/אתה`, `יודע/ת`, `תזוז/תזוזי`
+    ///   - parenthesis: `יודע(ת)`, `בטוח(ה)`
+    /// Both are refusals to resolve gender, and both read as machine output. We flag
+    /// them so the line is re-asked with an explicit binding (or explicit instruction
+    /// to phrase neutrally) rather than shipped.
+    ///
+    /// `ו/או` ("and/or") is the one legitimate Hebrew slash construction, so it is
+    /// excluded. The check is script-generic — the same shapes hedge in Arabic.
+    static func genderHedge(_ s: String) -> Bool {
+        let text = s.replacingOccurrences(of: "ו/או", with: " ")
+        // Hebrew + Arabic letter ranges, written as escapes so the class is explicit.
+        let letters = "\u{0590}-\u{05FF}\u{0600}-\u{06FF}"
+        let patterns = [
+            // word/word, both in the same non-Latin script and no spaces around the
+            // slash (a spaced slash is usually a real alternative, e.g. a title).
+            "[\(letters)]+/[\(letters)]+",
+            // word(suffix) — a bracketed inflection tail of 1-3 letters.
+            "[\(letters)]{2,}\\([\(letters)]{1,3}\\)",
+        ]
+        return patterns.contains { text.range(of: $0, options: .regularExpression) != nil }
     }
 
     // MARK: - Script helpers

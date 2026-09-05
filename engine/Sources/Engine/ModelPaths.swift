@@ -21,7 +21,10 @@ public struct ModelPaths: Sendable {
     /// Subdirectories per docs/MODELS.md.
     public var whisper: URL { root.appendingPathComponent("whisper") }
     public var whisperKit: URL { root.appendingPathComponent("whisperkit") }
+    /// Quality translation LLM (DictaLM-3.0 12B). The default engine.
     public var llm: URL { root.appendingPathComponent("llm") }
+    /// Fast translation LLM (DictaLM-2.0 7B) — the speed tier / two-pass draft model.
+    public var llmFast: URL { root.appendingPathComponent("llm-fast") }
     public var hfCache: URL { root.appendingPathComponent("hf-cache") }
     public var ollama: URL { root.appendingPathComponent("ollama") }
 

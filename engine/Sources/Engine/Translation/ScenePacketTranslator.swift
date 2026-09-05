@@ -1,0 +1,562 @@
+import Foundation
+
+public struct ScenePacket: Sendable {
+    public var cueIndices: [Int]
+    public var lines: [String]
+
+    public init(cueIndices: [Int], lines: [String]) {
+        self.cueIndices = cueIndices
+        self.lines = lines
+    }
+
+    public var isEmpty: Bool { lines.isEmpty }
+}
+
+public enum ScenePacketer {
+    /// Build packet-sized scenes from timed cues.
+    ///
+    /// Packets split on large timing gaps and on conservative context limits.
+    /// Defaults fit the current 4096-token llama context better than the larger
+    /// scene packets we should test once the server runs at 8k/16k context.
+    public static func packets(
+        cues: [SubtitleCue],
+        maxLines: Int = 24,
+        maxSourceChars: Int = 2_400,
+        sceneGapMs: Int = 2_500
+    ) -> [ScenePacket] {
+        var out: [ScenePacket] = []
+        var indices: [Int] = []
+        var lines: [String] = []
+        var chars = 0
+        var previousEnd: Int?
+
+        func flush() {
+            guard !lines.isEmpty else { return }
+            out.append(ScenePacket(cueIndices: indices, lines: lines))
+            indices.removeAll(keepingCapacity: true)
+            lines.removeAll(keepingCapacity: true)
+            chars = 0
+        }
+
+        for cue in PromptTextSanitizer.sanitizedCues(cues) {
+            let gap = previousEnd.map { cue.startMs - $0 } ?? 0
+            let wouldOverflow = !lines.isEmpty
+                && (lines.count >= maxLines || chars + cue.text.count > maxSourceChars)
+            if gap >= sceneGapMs || wouldOverflow { flush() }
+            indices.append(cue.index)
+            lines.append(cue.text)
+            chars += cue.text.count
+            previousEnd = cue.endMs
+        }
+        flush()
+        return out
+    }
+}
+
+public enum ScenePacketTranslationError: Error, CustomStringConvertible {
+    case invalidPacket(String)
+
+    public var description: String {
+        switch self {
+        case .invalidPacket(let reason): return "Invalid scene-packet translation: \(reason)"
+        }
+    }
+}
+
+public struct ScenePacketTranslationStats: Sendable {
+    public var requests: Int = 0
+    public var splits: Int = 0
+    public var numberedFallbacks: Int = 0
+    public var fallbackFailures: Int = 0
+    /// `"unverified@<cueIndex>"` for lines that still failed fidelity validation after
+    /// a repair re-ask (kept as best candidate, surfaced for QA).
+    public var qaFlags: [String] = []
+
+    public init() {}
+}
+
+public struct ScenePacketTranslationOutput: Sendable {
+    public var translationsByCueIndex: [Int: String]
+    public var stats: ScenePacketTranslationStats
+
+    public init(translationsByCueIndex: [Int: String], stats: ScenePacketTranslationStats) {
+        self.translationsByCueIndex = translationsByCueIndex
+        self.stats = stats
+    }
+}
+
+/// Output schema the scene-packet translator asks the model to emit.
+///
+/// The model decodes one of these per packet. Because decode (token generation) is
+/// the memory-bandwidth wall (~22 tok/s on the 12B; prefill is ~8x faster), the
+/// schema's per-line token overhead is a FIRST-ORDER cost, not a formatting detail:
+///   - `.json`  emits `{"i":1,"sg":"m","ag":"u","t":"…"}` per line — the gender
+///              bookkeeping (sg/ag) and JSON punctuation roughly DOUBLE the output
+///              tokens vs the translation alone (measured 1.95x on a 24-line scene).
+///   - `.lean`  emits only `<n>. <translation>` — gender/speaker context is pushed
+///              entirely into the (cheap, cached) PROMPT, so the model decodes ONLY
+///              the Hebrew. Same per-line scene context, ~half the output tokens.
+/// Both give the model the full continuous scene + known character genders as
+/// input, so gendered grammar / pronouns / cross-line consistency are unchanged.
+public enum ScenePacketFormat: String, Sendable, Codable {
+    case json
+    case lean
+}
+
+/// Fuses attribution and translation into one validated scene-packet request.
+///
+/// The target LLM remains the authority. We only accept packets that produce one
+/// translated entry per source line. Bad packets are recursively split; callers
+/// can fall back to the legacy path if this still fails.
+public struct ScenePacketTranslator: Sendable {
+    private let chat: LlamaChat
+    private let format: ScenePacketFormat
+    /// Spoken/source language code (e.g. "en"), declared in the prompt so the model
+    /// translates FROM the right language and never "re-translates" already-target text.
+    /// Nil ⇒ the model infers it from the text.
+    private let sourceLang: String?
+    /// User-forced/locked name translations (SOURCE name → TARGET name). Injected as a
+    /// glossary so the model renders these names EXACTLY and identically everywhere.
+    private let nameGlossary: [String: String]
+
+    public init(chat: LlamaChat, format: ScenePacketFormat = .json,
+                sourceLang: String? = nil, nameGlossary: [String: String] = [:]) {
+        self.chat = chat
+        self.format = format
+        self.sourceLang = sourceLang
+        self.nameGlossary = nameGlossary
+    }
+
+    /// The "NAME GLOSSARY" prompt block (or empty when there are no locked names).
+    private func glossaryBlock() -> String? {
+        guard !nameGlossary.isEmpty else { return nil }
+        let list = nameGlossary.sorted { $0.key < $1.key }
+            .map { "\($0.key) → \($0.value)" }
+            .joined(separator: "; ")
+        return "NAME GLOSSARY (translate these names EXACTLY as shown, identically every "
+            + "time, never vary or re-spell them): \(list)"
+    }
+
+    /// "from English into Hebrew" / "into Hebrew" — the translation direction clause.
+    /// Drops the FROM half when the source is unknown or equals the target.
+    static func direction(source: String?, target: String) -> String {
+        let into = "into \(LanguageName.of(target))"
+        guard let s = source, !s.isEmpty,
+              LanguageName.of(s) != LanguageName.of(target) else { return into }
+        return "from \(LanguageName.of(s)) \(into)"
+    }
+
+    public func translate(
+        packets: [ScenePacket],
+        targetLang: String,
+        knownCharacters: [String: String] = [:],
+        onProgress: @Sendable (Double) -> Void = { _ in }
+    ) async throws -> ScenePacketTranslationOutput {
+        var translations: [Int: String] = [:]
+        var stats = ScenePacketTranslationStats()
+        let total = max(packets.count, 1)
+
+        for (i, packet) in packets.enumerated() where !packet.isEmpty {
+            let result = try await translatePacket(
+                packet,
+                targetLang: targetLang,
+                knownCharacters: knownCharacters,
+                stats: &stats
+            )
+            translations.merge(result) { current, _ in current }
+            onProgress(Double(i + 1) / Double(total))
+        }
+        return ScenePacketTranslationOutput(translationsByCueIndex: translations, stats: stats)
+    }
+
+    private func translatePacket(
+        _ packet: ScenePacket,
+        targetLang: String,
+        knownCharacters: [String: String],
+        stats: inout ScenePacketTranslationStats
+    ) async throws -> [Int: String] {
+        stats.requests += 1
+
+        // LEAN: ask for `<n>. <translation>` only — no JSON, no sg/ag echo. The
+        // model decodes ~half the tokens of the JSON schema for the same scene.
+        if format == .lean {
+            return try await translateLeanPacket(
+                packet, targetLang: targetLang, knownCharacters: knownCharacters, stats: &stats)
+        }
+
+        let prompt = buildPrompt(packet: packet, targetLang: targetLang, knownCharacters: knownCharacters)
+        let sourceChars = packet.lines.reduce(0) { $0 + $1.count }
+        let maxTokens = max(500, min(1_100, sourceChars + packet.lines.count * 20 + 280))
+        let raw = try await chat.complete(
+            system: nil,
+            user: prompt,
+            maxTokens: maxTokens,
+            temperature: 0.2
+        )
+
+        if let parsed = Self.parseTranslations(raw, cueIndices: packet.cueIndices) {
+            return parsed
+        }
+
+        guard packet.lines.count > 6 else {
+            return try await translateNumberedFallback(
+                packet,
+                targetLang: targetLang,
+                knownCharacters: knownCharacters,
+                stats: &stats,
+                invalidRaw: raw
+            )
+        }
+
+        return try await splitAndTranslate(
+            packet, targetLang: targetLang, knownCharacters: knownCharacters, stats: &stats)
+    }
+
+    /// Lean translation of one packet with TARGETED REPAIR.
+    ///
+    /// The model occasionally drops a line (usually the last, after emitting its END
+    /// marker early) or merges two. Splitting the packet to recover would re-decode
+    /// every already-good line — the dominant cost. Instead we keep what parsed and
+    /// re-ask ONLY for the missing line numbers, handing the whole scene back as
+    /// context (its prefix is prompt-cached, so the re-ask is almost pure decode of
+    /// just the missing lines). Splitting is the last resort for a fully garbled packet.
+    private func translateLeanPacket(
+        _ packet: ScenePacket,
+        targetLang: String,
+        knownCharacters: [String: String],
+        stats: inout ScenePacketTranslationStats
+    ) async throws -> [Int: String] {
+        let prompt = buildNumberedFallbackPrompt(
+            packet: packet, targetLang: targetLang, knownCharacters: knownCharacters)
+        let raw = try await chat.complete(
+            system: nil, user: prompt,
+            maxTokens: Self.leanMaxTokens(packet), temperature: 0.2)
+        var parsed = DictaLMTranslator.parseNumbered(raw, expected: packet.lines.count)
+        var missing = Self.missingLocals(parsed)
+
+        // Pass 1: re-ask only the dropped lines, full scene as (cached) context.
+        if !missing.isEmpty {
+            stats.numberedFallbacks += 1
+            stats.requests += 1
+            let repairPrompt = buildLeanRepairPrompt(
+                packet: packet, missingLocal0: missing,
+                targetLang: targetLang, knownCharacters: knownCharacters)
+            let repairRaw = try await chat.complete(
+                system: nil, user: repairPrompt,
+                maxTokens: max(120, missing.count * 40 + 60), temperature: 0.2)
+            let repaired = DictaLMTranslator.parseNumbered(repairRaw, expected: packet.lines.count)
+            for local0 in missing where !repaired[local0].isEmpty { parsed[local0] = repaired[local0] }
+            missing = Self.missingLocals(parsed)
+        }
+
+        // Still missing (rare) and the packet is large → split that remainder. A tiny
+        // packet that still won't parse is a genuine failure callers can fall back on.
+        if !missing.isEmpty {
+            guard packet.lines.count > 4 else {
+                throw ScenePacketTranslationError.invalidPacket(
+                    "lean packet (\(packet.lines.count) lines) left \(missing.count) unresolved after repair")
+            }
+            stats.fallbackFailures += missing.count
+            let split = try await splitAndTranslate(
+                packet, targetLang: targetLang, knownCharacters: knownCharacters, stats: &stats)
+            // splitAndTranslate returns by cueIndex; fill only what's still missing.
+            for local0 in missing {
+                if let t = split[packet.cueIndices[local0]] { parsed[local0] = t }
+            }
+            missing = Self.missingLocals(parsed)
+            guard missing.isEmpty else {
+                throw ScenePacketTranslationError.invalidPacket(
+                    "lean packet: \(missing.count) lines unresolved after split")
+            }
+        }
+
+        // FIDELITY VALIDATION: re-ask lines whose translation looks unfaithful
+        // (untranslated, dropped/added content, looped, lost a number). Conservative
+        // checks → rare re-asks. Residual failures are kept and flagged for QA.
+        try await validateAndRepair(
+            &parsed, packet: packet, targetLang: targetLang,
+            knownCharacters: knownCharacters, stats: &stats)
+
+        var out: [Int: String] = [:]
+        for (i, text) in parsed.enumerated() { out[packet.cueIndices[i]] = text }
+        return out
+    }
+
+    /// Deterministically check each translated line against its source and re-ask the
+    /// ones that look unfaithful, using the same cheap scene-context repair as dropped
+    /// lines. Only a repair that itself PASSES validation replaces the original (never
+    /// swap a suspect line for another bad one). Residual failures are flagged in qaFlags.
+    private func validateAndRepair(
+        _ parsed: inout [String],
+        packet: ScenePacket,
+        targetLang: String,
+        knownCharacters: [String: String],
+        stats: inout ScenePacketTranslationStats
+    ) async throws {
+        func suspects(_ lines: [String]) -> [Int] {
+            lines.enumerated().compactMap { i, t in
+                t.isEmpty ? nil
+                    : (TranslationOutputValidator.isValid(
+                        source: packet.lines[i], translation: t, targetLang: targetLang) ? nil : i)
+            }
+        }
+        let suspect = suspects(parsed)
+        guard !suspect.isEmpty else { return }
+
+        stats.numberedFallbacks += 1
+        stats.requests += 1
+        let prompt = buildLeanRepairPrompt(
+            packet: packet, missingLocal0: suspect,
+            targetLang: targetLang, knownCharacters: knownCharacters)
+        let raw = try await chat.complete(
+            system: nil, user: prompt,
+            maxTokens: max(120, suspect.count * 40 + 60), temperature: 0.2)
+        let repaired = DictaLMTranslator.parseNumbered(raw, expected: packet.lines.count)
+        for local0 in suspect where !repaired[local0].isEmpty
+            && TranslationOutputValidator.isValid(
+                source: packet.lines[local0], translation: repaired[local0], targetLang: targetLang) {
+            parsed[local0] = repaired[local0]
+        }
+
+        // Residual: keep the best candidate we have, but surface it for QA.
+        for local0 in suspects(parsed) {
+            stats.qaFlags.append("unverified@\(packet.cueIndices[local0])")
+        }
+    }
+
+    private static func leanMaxTokens(_ packet: ScenePacket) -> Int {
+        let sourceChars = packet.lines.reduce(0) { $0 + $1.count }
+        // ~20 output tokens/line of Hebrew measured; give headroom but cap for safety.
+        return max(220, min(1_600, sourceChars + packet.lines.count * 14 + 160))
+    }
+
+    private static func missingLocals(_ parsed: [String]) -> [Int] {
+        parsed.enumerated().filter { $0.element.isEmpty }.map { $0.offset }
+    }
+
+    /// Re-ask prompt: same scene, but emit Hebrew ONLY for the still-missing line
+    /// numbers. Output is just those lines, so the re-ask is cheap decode.
+    private func buildLeanRepairPrompt(
+        packet: ScenePacket,
+        missingLocal0: [Int],
+        targetLang: String,
+        knownCharacters: [String: String]
+    ) -> String {
+        let wanted = missingLocal0.map { String($0 + 1) }.joined(separator: ", ")
+        var parts: [String] = []
+        parts.append("""
+        You are an expert subtitle translator. Below is a continuous scene. Translate \
+        \(Self.direction(source: sourceLang, target: targetLang)) ONLY the lines numbered: \(wanted), staying FAITHFUL to exactly \
+        what each line says — convey its full meaning, add nothing, omit nothing, do not paraphrase. \
+        Use the whole scene only to resolve speaker/addressee gender and ambiguous pronouns. \
+        Output one numbered translation per requested line, in the form "<number>. <translation>". \
+        No other lines, no notes.
+        """)
+        if !knownCharacters.isEmpty {
+            let list = knownCharacters.sorted { $0.key < $1.key }
+                .map { "\($0.key)=\($0.value)" }.joined(separator: ", ")
+            parts.append("KNOWN CHARACTER GENDERS: \(list)")
+        }
+        if let g = glossaryBlock() { parts.append(g) }
+        parts.append("--- SOURCE LINES ---")
+        for (i, line) in packet.lines.enumerated() {
+            parts.append("\(i + 1). \(line)")
+        }
+        parts.append("--- TRANSLATIONS (only \(wanted)) ---")
+        return parts.joined(separator: "\n")
+    }
+
+    /// Halve a packet and translate each half independently, then merge. Shared by
+    /// both formats: smaller scenes are easier for the model to keep aligned.
+    private func splitAndTranslate(
+        _ packet: ScenePacket,
+        targetLang: String,
+        knownCharacters: [String: String],
+        stats: inout ScenePacketTranslationStats
+    ) async throws -> [Int: String] {
+        stats.splits += 1
+        let mid = packet.lines.count / 2
+        let left = ScenePacket(
+            cueIndices: Array(packet.cueIndices[..<mid]),
+            lines: Array(packet.lines[..<mid])
+        )
+        let right = ScenePacket(
+            cueIndices: Array(packet.cueIndices[mid...]),
+            lines: Array(packet.lines[mid...])
+        )
+        var out = try await translatePacket(
+            left,
+            targetLang: targetLang,
+            knownCharacters: knownCharacters,
+            stats: &stats
+        )
+        let rightOut = try await translatePacket(
+            right,
+            targetLang: targetLang,
+            knownCharacters: knownCharacters,
+            stats: &stats
+        )
+        out.merge(rightOut) { current, _ in current }
+        return out
+    }
+
+    private func translateNumberedFallback(
+        _ packet: ScenePacket,
+        targetLang: String,
+        knownCharacters: [String: String],
+        stats: inout ScenePacketTranslationStats,
+        invalidRaw: String
+    ) async throws -> [Int: String] {
+        stats.numberedFallbacks += 1
+        stats.requests += 1
+        let prompt = buildNumberedFallbackPrompt(
+            packet: packet,
+            targetLang: targetLang,
+            knownCharacters: knownCharacters
+        )
+        let sourceChars = packet.lines.reduce(0) { $0 + $1.count }
+        let raw = try await chat.complete(
+            system: nil,
+            user: prompt,
+            maxTokens: max(220, min(620, sourceChars + 140)),
+            temperature: 0.2
+        )
+        let parsed = DictaLMTranslator.parseNumbered(raw, expected: packet.lines.count)
+        guard parsed.count == packet.lines.count, !parsed.contains(where: { $0.isEmpty }) else {
+            stats.fallbackFailures += 1
+            let sample = invalidRaw.prefix(180).replacingOccurrences(of: "\n", with: " ")
+            throw ScenePacketTranslationError.invalidPacket(
+                "packet with \(packet.lines.count) lines failed JSON and numbered fallback; raw=\(sample)"
+            )
+        }
+        var out: [Int: String] = [:]
+        for (i, text) in parsed.enumerated() {
+            out[packet.cueIndices[i]] = text
+        }
+        return out
+    }
+
+    func buildPrompt(
+        packet: ScenePacket,
+        targetLang: String,
+        knownCharacters: [String: String] = [:]
+    ) -> String {
+        var parts: [String] = []
+        parts.append("""
+        You are an expert subtitle translator. Translate this continuous scene \
+        \(Self.direction(source: sourceLang, target: targetLang)), staying FAITHFUL to exactly what is said. Infer speaker and \
+        addressee gender AND number from names, pronouns, turn-taking, and context — a vocative \
+        name (the person addressed, e.g. "…, Mel Brooks!") fixes the addressee to that single \
+        person's gender and SINGULAR forms; a recognizable real person keeps their real-world \
+        gender. Apply gendered grammar correctly. Output ONLY compact JSON, no markdown.
+
+        JSON schema:
+        {"lines":[{"i":1,"sg":"m|f|u","ag":"m|f|u","t":"translation"}]}
+
+        Rules:
+        - Return exactly one object for each input line, same numeric i values.
+        - "t" must contain only the translated subtitle text.
+        - Translate the full meaning of each line: omit nothing, add nothing, do not paraphrase or soften.
+        - Translate each line on its own; use the scene only for gender and ambiguous pronouns.
+        - Write natural, idiomatic spoken \(LanguageName.of(targetLang)) (not word-for-word).
+        - Do not copy timing, tags, notes, or explanations.
+        - Keep glossary names consistent when known.
+        - After the JSON object, output a newline followed by END.
+        """)
+        if !knownCharacters.isEmpty {
+            let list = knownCharacters.sorted { $0.key < $1.key }
+                .map { "\($0.key)=\($0.value)" }
+                .joined(separator: ", ")
+            parts.append("KNOWN CHARACTER GENDERS: \(list)")
+        }
+        if let g = glossaryBlock() { parts.append(g) }
+        parts.append("--- SOURCE LINES ---")
+        for (i, line) in packet.lines.enumerated() {
+            parts.append("\(i + 1). \(line)")
+        }
+        parts.append("--- JSON ---")
+        return parts.joined(separator: "\n")
+    }
+
+    private func buildNumberedFallbackPrompt(
+        packet: ScenePacket,
+        targetLang: String,
+        knownCharacters: [String: String]
+    ) -> String {
+        var parts: [String] = []
+        parts.append("""
+        You are an expert subtitle translator. Translate each numbered line of this \
+        continuous scene \(Self.direction(source: sourceLang, target: targetLang)), staying FAITHFUL to exactly what is said.
+
+        Faithfulness rules:
+        - Convey the full meaning of each line — never omit, shorten, soften, or censor it.
+        - Add nothing that is not in the source — no explanations, filler, or invented words.
+        - Do not paraphrase into a different statement; keep the speaker's actual words, tone, and intent.
+        - Translate each line on its own. Use the surrounding lines ONLY to resolve speaker/addressee \
+        gender, number, and ambiguous pronouns — never to move meaning between lines.
+        - Gendered grammar: inflect 1st-person forms for the SPEAKER and 2nd-person forms \
+        (verbs, "you", imperatives) for the ADDRESSEE, by both GENDER and NUMBER. A name used as \
+        the one being addressed (a vocative, e.g. "…, Mel Brooks!") fixes the addressee: use that \
+        single person's gender and SINGULAR forms — and a recognizable real person keeps their \
+        real-world gender. Use plural "you" only when more than one person is actually addressed.
+        - Keep proper names, numbers, and quoted text exact.
+        - Write natural, idiomatic spoken \(LanguageName.of(targetLang)) (not word-for-word).
+
+        Output exactly one numbered translation per input line, same order, in the form \
+        "<number>. <translation>". No JSON, no notes.
+        After the final numbered translation, output a newline followed by END.
+        """)
+        if !knownCharacters.isEmpty {
+            let list = knownCharacters.sorted { $0.key < $1.key }
+                .map { "\($0.key)=\($0.value)" }
+                .joined(separator: ", ")
+            parts.append("KNOWN CHARACTER GENDERS: \(list)")
+        }
+        if let g = glossaryBlock() { parts.append(g) }
+        parts.append("--- SOURCE LINES ---")
+        for (i, line) in packet.lines.enumerated() {
+            parts.append("\(i + 1). \(line)")
+        }
+        parts.append("--- TRANSLATIONS ---")
+        return parts.joined(separator: "\n")
+    }
+
+    static func parseTranslations(_ raw: String, cueIndices: [Int]) -> [Int: String]? {
+        guard let data = extractJSONObject(raw)?.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let lines = obj["lines"] as? [[String: Any]]
+        else { return nil }
+
+        guard lines.count == cueIndices.count else { return nil }
+        var byLocalIndex: [Int: String] = [:]
+        for item in lines {
+            guard let i = intValue(item["i"]), i >= 1, i <= cueIndices.count else { return nil }
+            guard let rawText = item["t"] as? String else { return nil }
+            let text = DictaLMTranslator.cleanLine(rawText)
+            guard !text.isEmpty else { return nil }
+            byLocalIndex[i] = text
+        }
+        guard byLocalIndex.count == cueIndices.count else { return nil }
+
+        var out: [Int: String] = [:]
+        for local in 1 ... cueIndices.count {
+            guard let text = byLocalIndex[local] else { return nil }
+            out[cueIndices[local - 1]] = text
+        }
+        return out
+    }
+
+    private static func extractJSONObject(_ raw: String) -> String? {
+        guard let start = raw.firstIndex(of: "{"), let end = raw.lastIndex(of: "}"),
+              start <= end
+        else { return nil }
+        return String(raw[start ... end])
+    }
+
+    private static func intValue(_ value: Any?) -> Int? {
+        if let i = value as? Int { return i }
+        if let d = value as? Double { return Int(d) }
+        if let s = value as? String { return Int(s) }
+        return nil
+    }
+}

@@ -63,13 +63,14 @@ public struct DialogueAnalyzer: Sendable {
         groups, or descriptive phrases — only real character names. If there are no \
         named characters, output {}. Output ONLY a compact JSON object mapping name \
         to "m" (male), "f" (female), or "u" (unknown) — no commentary, no code \
-        fences. Example: {"David":"m","Sarah":"f"}
+        fences. Example: {"David":"m","Sarah":"f"}. After the JSON object, output \
+        a newline followed by END.
 
         DIALOGUE:
         \(text)
         """
         let raw = try await chat.complete(system: nil, user: prompt,
-                                          maxTokens: 400, temperature: 0.1)
+                                          maxTokens: 260, temperature: 0.1)
         return Self.parseMap(raw)
     }
 

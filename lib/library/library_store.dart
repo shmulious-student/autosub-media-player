@@ -31,6 +31,14 @@ class LibraryEntry {
 
   String get fileName => p.basename(path);
 
+  /// A cleaner display name: the base filename without extension, with common
+  /// separators turned into spaces (e.g. "Foundation.S02E01" → "Foundation S02E01").
+  /// TMDB metadata will refine this later (SCREENS §3).
+  String get displayTitle => p
+      .basenameWithoutExtension(path)
+      .replaceAll(RegExp(r'[._]+'), ' ')
+      .trim();
+
   /// Sidecar subtitle path for [lang], next to the media (SPEC: portable sidecar).
   String sidecarPath(String lang) =>
       p.join(p.dirname(path), '${p.basenameWithoutExtension(path)}.$lang.srt');

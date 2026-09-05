@@ -27,7 +27,7 @@ enum Gender { m, f, nb, unknown }
 enum SubtitleFormat { srt, ass }
 
 /// Where a subtitle's text came from.
-enum SubtitleSource { embedded, asr }
+enum SubtitleSource { embedded, online, asr }
 
 /// Lifecycle state of a [ProcessingJob].
 enum JobState { queued, running, paused, failed, done }
@@ -83,34 +83,36 @@ class Title {
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'path': path,
-        'content_hash': contentHash,
-        'container': container,
-        'codec': codec,
-        'duration_ms': duration?.inMilliseconds,
-        'contextual_parent_id': contextualParentId,
-        'tmdb_id': tmdbId,
-        'source_preference': sourcePreference.name,
-        'status': status,
-      };
+    'id': id,
+    'path': path,
+    'content_hash': contentHash,
+    'container': container,
+    'codec': codec,
+    'duration_ms': duration?.inMilliseconds,
+    'contextual_parent_id': contextualParentId,
+    'tmdb_id': tmdbId,
+    'source_preference': sourcePreference.name,
+    'status': status,
+  };
 
   factory Title.fromJson(Map<String, dynamic> j) => Title(
-        id: j['id'] as String,
-        path: j['path'] as String,
-        contentHash: j['content_hash'] as String?,
-        container: j['container'] as String?,
-        codec: j['codec'] as String?,
-        duration: j['duration_ms'] == null
-            ? null
-            : Duration(milliseconds: (j['duration_ms'] as num).toInt()),
-        contextualParentId: j['contextual_parent_id'] as String?,
-        tmdbId: (j['tmdb_id'] as num?)?.toInt(),
-        sourcePreference: _enumFromString(
-            SourcePreference.values, j['source_preference'] as String?,
-            SourcePreference.auto),
-        status: (j['status'] as String?) ?? 'new',
-      );
+    id: j['id'] as String,
+    path: j['path'] as String,
+    contentHash: j['content_hash'] as String?,
+    container: j['container'] as String?,
+    codec: j['codec'] as String?,
+    duration: j['duration_ms'] == null
+        ? null
+        : Duration(milliseconds: (j['duration_ms'] as num).toInt()),
+    contextualParentId: j['contextual_parent_id'] as String?,
+    tmdbId: (j['tmdb_id'] as num?)?.toInt(),
+    sourcePreference: _enumFromString(
+      SourcePreference.values,
+      j['source_preference'] as String?,
+      SourcePreference.auto,
+    ),
+    status: (j['status'] as String?) ?? 'new',
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -132,19 +134,22 @@ class ContextualParent {
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'type': type.name,
-        'tmdb_id': tmdbId,
-        'bible_id': bibleId,
-      };
+    'id': id,
+    'type': type.name,
+    'tmdb_id': tmdbId,
+    'bible_id': bibleId,
+  };
 
   factory ContextualParent.fromJson(Map<String, dynamic> j) => ContextualParent(
-        id: j['id'] as String,
-        type: _enumFromString(ContextualParentType.values, j['type'] as String?,
-            ContextualParentType.standalone),
-        tmdbId: (j['tmdb_id'] as num?)?.toInt(),
-        bibleId: j['bible_id'] as String?,
-      );
+    id: j['id'] as String,
+    type: _enumFromString(
+      ContextualParentType.values,
+      j['type'] as String?,
+      ContextualParentType.standalone,
+    ),
+    tmdbId: (j['tmdb_id'] as num?)?.toInt(),
+    bibleId: j['bible_id'] as String?,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -171,22 +176,22 @@ class CharacterBible {
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'contextual_parent_id': contextualParentId,
-        'version': version,
-        'locked_by_user': lockedByUser,
-        'characters': characters.map((c) => c.toJson()).toList(),
-      };
+    'id': id,
+    'contextual_parent_id': contextualParentId,
+    'version': version,
+    'locked_by_user': lockedByUser,
+    'characters': characters.map((c) => c.toJson()).toList(),
+  };
 
   factory CharacterBible.fromJson(Map<String, dynamic> j) => CharacterBible(
-        id: j['id'] as String,
-        contextualParentId: j['contextual_parent_id'] as String,
-        version: (j['version'] as num?)?.toInt() ?? 1,
-        lockedByUser: (j['locked_by_user'] as bool?) ?? false,
-        characters: ((j['characters'] as List?) ?? const [])
-            .map((e) => BibleCharacter.fromJson(e as Map<String, dynamic>))
-            .toList(),
-      );
+    id: j['id'] as String,
+    contextualParentId: j['contextual_parent_id'] as String,
+    version: (j['version'] as num?)?.toInt() ?? 1,
+    lockedByUser: (j['locked_by_user'] as bool?) ?? false,
+    characters: ((j['characters'] as List?) ?? const [])
+        .map((e) => BibleCharacter.fromJson(e as Map<String, dynamic>))
+        .toList(),
+  );
 }
 
 /// One character within a [CharacterBible]. SPEC §5.
@@ -215,32 +220,36 @@ class BibleCharacter {
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'canonical_name': canonicalName,
-        'gender': gender.name,
-        'name_translations': nameTranslations,
-        'aliases': aliases,
-        'relationships': relationships,
-        'confidence': confidence,
-        'user_corrected': userCorrected,
-      };
+    'id': id,
+    'canonical_name': canonicalName,
+    'gender': gender.name,
+    'name_translations': nameTranslations,
+    'aliases': aliases,
+    'relationships': relationships,
+    'confidence': confidence,
+    'user_corrected': userCorrected,
+  };
 
   factory BibleCharacter.fromJson(Map<String, dynamic> j) => BibleCharacter(
-        id: j['id'] as String,
-        canonicalName: j['canonical_name'] as String,
-        gender: _enumFromString(
-            Gender.values, j['gender'] as String?, Gender.unknown),
-        nameTranslations: ((j['name_translations'] as Map?) ?? const {})
-            .map((k, v) => MapEntry(k as String, v as String)),
-        aliases: ((j['aliases'] as List?) ?? const [])
-            .map((e) => e as String)
-            .toList(),
-        relationships: ((j['relationships'] as List?) ?? const [])
-            .map((e) => e as String)
-            .toList(),
-        confidence: (j['confidence'] as num?)?.toDouble() ?? 0.0,
-        userCorrected: (j['user_corrected'] as bool?) ?? false,
-      );
+    id: j['id'] as String,
+    canonicalName: j['canonical_name'] as String,
+    gender: _enumFromString(
+      Gender.values,
+      j['gender'] as String?,
+      Gender.unknown,
+    ),
+    nameTranslations: ((j['name_translations'] as Map?) ?? const {}).map(
+      (k, v) => MapEntry(k as String, v as String),
+    ),
+    aliases: ((j['aliases'] as List?) ?? const [])
+        .map((e) => e as String)
+        .toList(),
+    relationships: ((j['relationships'] as List?) ?? const [])
+        .map((e) => e as String)
+        .toList(),
+    confidence: (j['confidence'] as num?)?.toDouble() ?? 0.0,
+    userCorrected: (j['user_corrected'] as bool?) ?? false,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -280,41 +289,48 @@ class SubtitleArtifact {
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'title_id': titleId,
-        'lang': lang,
-        'format': format.name,
-        'source': source.name,
-        'engine': engine,
-        'model': model,
-        'version': version,
-        'sidecar_path': sidecarPath,
-        'internal_blob_id': internalBlobId,
-        'cps_stats': cpsStats,
-        'qa_flags': qaFlags,
-        'bible_version_used': bibleVersionUsed,
-      };
+    'id': id,
+    'title_id': titleId,
+    'lang': lang,
+    'format': format.name,
+    'source': source.name,
+    'engine': engine,
+    'model': model,
+    'version': version,
+    'sidecar_path': sidecarPath,
+    'internal_blob_id': internalBlobId,
+    'cps_stats': cpsStats,
+    'qa_flags': qaFlags,
+    'bible_version_used': bibleVersionUsed,
+  };
 
   factory SubtitleArtifact.fromJson(Map<String, dynamic> j) => SubtitleArtifact(
-        id: j['id'] as String,
-        titleId: j['title_id'] as String,
-        lang: j['lang'] as String,
-        format: _enumFromString(
-            SubtitleFormat.values, j['format'] as String?, SubtitleFormat.srt),
-        source: _enumFromString(
-            SubtitleSource.values, j['source'] as String?, SubtitleSource.asr),
-        engine: (j['engine'] as String?) ?? '',
-        model: (j['model'] as String?) ?? '',
-        version: (j['version'] as String?) ?? '',
-        sidecarPath: j['sidecar_path'] as String?,
-        internalBlobId: j['internal_blob_id'] as String?,
-        cpsStats: ((j['cps_stats'] as Map?) ?? const {})
-            .map((k, v) => MapEntry(k as String, v)),
-        qaFlags: ((j['qa_flags'] as List?) ?? const [])
-            .map((e) => e as String)
-            .toList(),
-        bibleVersionUsed: (j['bible_version_used'] as num?)?.toInt(),
-      );
+    id: j['id'] as String,
+    titleId: j['title_id'] as String,
+    lang: j['lang'] as String,
+    format: _enumFromString(
+      SubtitleFormat.values,
+      j['format'] as String?,
+      SubtitleFormat.srt,
+    ),
+    source: _enumFromString(
+      SubtitleSource.values,
+      j['source'] as String?,
+      SubtitleSource.asr,
+    ),
+    engine: (j['engine'] as String?) ?? '',
+    model: (j['model'] as String?) ?? '',
+    version: (j['version'] as String?) ?? '',
+    sidecarPath: j['sidecar_path'] as String?,
+    internalBlobId: j['internal_blob_id'] as String?,
+    cpsStats: ((j['cps_stats'] as Map?) ?? const {}).map(
+      (k, v) => MapEntry(k as String, v),
+    ),
+    qaFlags: ((j['qa_flags'] as List?) ?? const [])
+        .map((e) => e as String)
+        .toList(),
+    bibleVersionUsed: (j['bible_version_used'] as num?)?.toInt(),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -344,27 +360,30 @@ class ProcessingJob {
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'title_id': titleId,
-        'stage': stage,
-        'state': state.name,
-        'priority': priority,
-        'progress': progress,
-        'attempts': attempts,
-        'error': error,
-      };
+    'id': id,
+    'title_id': titleId,
+    'stage': stage,
+    'state': state.name,
+    'priority': priority,
+    'progress': progress,
+    'attempts': attempts,
+    'error': error,
+  };
 
   factory ProcessingJob.fromJson(Map<String, dynamic> j) => ProcessingJob(
-        id: j['id'] as String,
-        titleId: j['title_id'] as String,
-        stage: (j['stage'] as String?) ?? '',
-        state:
-            _enumFromString(JobState.values, j['state'] as String?, JobState.queued),
-        priority: (j['priority'] as num?)?.toInt() ?? 0,
-        progress: (j['progress'] as num?)?.toDouble() ?? 0.0,
-        attempts: (j['attempts'] as num?)?.toInt() ?? 0,
-        error: j['error'] as String?,
-      );
+    id: j['id'] as String,
+    titleId: j['title_id'] as String,
+    stage: (j['stage'] as String?) ?? '',
+    state: _enumFromString(
+      JobState.values,
+      j['state'] as String?,
+      JobState.queued,
+    ),
+    priority: (j['priority'] as num?)?.toInt() ?? 0,
+    progress: (j['progress'] as num?)?.toDouble() ?? 0.0,
+    attempts: (j['attempts'] as num?)?.toInt() ?? 0,
+    error: j['error'] as String?,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -390,26 +409,32 @@ class SyncRecord {
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'artifact_id': artifactId,
-        'transport': transport.name,
-        'state': state.name,
-        'checksum': checksum,
-        'device_targets': deviceTargets,
-      };
+    'id': id,
+    'artifact_id': artifactId,
+    'transport': transport.name,
+    'state': state.name,
+    'checksum': checksum,
+    'device_targets': deviceTargets,
+  };
 
   factory SyncRecord.fromJson(Map<String, dynamic> j) => SyncRecord(
-        id: j['id'] as String,
-        artifactId: j['artifact_id'] as String,
-        transport: _enumFromString(SyncTransport.values,
-            j['transport'] as String?, SyncTransport.lan),
-        state: _enumFromString(
-            SyncState.values, j['state'] as String?, SyncState.pending),
-        checksum: j['checksum'] as String?,
-        deviceTargets: ((j['device_targets'] as List?) ?? const [])
-            .map((e) => e as String)
-            .toList(),
-      );
+    id: j['id'] as String,
+    artifactId: j['artifact_id'] as String,
+    transport: _enumFromString(
+      SyncTransport.values,
+      j['transport'] as String?,
+      SyncTransport.lan,
+    ),
+    state: _enumFromString(
+      SyncState.values,
+      j['state'] as String?,
+      SyncState.pending,
+    ),
+    checksum: j['checksum'] as String?,
+    deviceTargets: ((j['device_targets'] as List?) ?? const [])
+        .map((e) => e as String)
+        .toList(),
+  );
 }
 
 // ---------------------------------------------------------------------------

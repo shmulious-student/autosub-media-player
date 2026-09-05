@@ -27,17 +27,22 @@ public struct PersistedJob: Sendable {
     public var seq: Int
     public var titleId: String?
     public var createdAt: Double
+    public var startedAt: Double?
+    public var endedAt: Double?
+    public var rating: JobRating?
 
     public init(
         id: String, path: String, target: String, state: String,
         stage: String? = nil, progress: Double = 0, sidecarPath: String? = nil,
         error: String? = nil, priority: Int = 0, seq: Int, titleId: String? = nil,
-        createdAt: Double
+        createdAt: Double, startedAt: Double? = nil, endedAt: Double? = nil,
+        rating: JobRating? = nil
     ) {
         self.id = id; self.path = path; self.target = target; self.state = state
         self.stage = stage; self.progress = progress; self.sidecarPath = sidecarPath
         self.error = error; self.priority = priority; self.seq = seq
         self.titleId = titleId; self.createdAt = createdAt
+        self.startedAt = startedAt; self.endedAt = endedAt; self.rating = rating
     }
 }
 
@@ -221,16 +226,21 @@ public final class SqliteStore: Store, @unchecked Sendable {
         try await pool.write { db in
             try db.execute(sql: """
                 INSERT INTO job (id, path, target, state, stage, progress, sidecar_path,
-                                 error, priority, seq, title_id, created_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                                 error, priority, seq, title_id, created_at,
+                                 started_at, ended_at, rating_json)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(id) DO UPDATE SET
                   path=excluded.path, target=excluded.target, state=excluded.state,
                   stage=excluded.stage, progress=excluded.progress,
                   sidecar_path=excluded.sidecar_path, error=excluded.error,
-                  priority=excluded.priority, title_id=excluded.title_id
+                  priority=excluded.priority, title_id=excluded.title_id,
+                  started_at=excluded.started_at, ended_at=excluded.ended_at,
+                  rating_json=excluded.rating_json
                 """,
                 arguments: [j.id, j.path, j.target, j.state, j.stage, j.progress,
-                            j.sidecarPath, j.error, j.priority, j.seq, j.titleId, j.createdAt])
+                            j.sidecarPath, j.error, j.priority, j.seq, j.titleId,
+                            j.createdAt, j.startedAt, j.endedAt,
+                            j.rating.map(Self.json)])
         }
     }
 
@@ -243,7 +253,9 @@ public final class SqliteStore: Store, @unchecked Sendable {
                     state: row["state"], stage: row["stage"], progress: row["progress"],
                     sidecarPath: row["sidecar_path"], error: row["error"],
                     priority: row["priority"], seq: row["seq"], titleId: row["title_id"],
-                    createdAt: row["created_at"])
+                    createdAt: row["created_at"], startedAt: row["started_at"],
+                    endedAt: row["ended_at"],
+                    rating: Self.decode(row["rating_json"], default: Optional<JobRating>.none))
             }
         }
     }

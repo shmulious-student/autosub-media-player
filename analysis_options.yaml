@@ -9,6 +9,15 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  exclude:
+    # Design-system reference files (ready-to-paste Dart), not app code. The
+    # canonical implementation lives in lib/ui/tokens.dart.
+    - docs/**
+    - build/**
+    - ios/**
+    - macos/**
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`

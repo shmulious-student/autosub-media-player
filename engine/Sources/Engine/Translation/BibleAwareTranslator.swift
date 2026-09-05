@@ -52,10 +52,13 @@ public protocol BibleAwareTranslator: Sendable {
 public struct DictaLMTranslator: BibleAwareTranslator {
     private let modelPaths: ModelPaths
     private let chat: LlamaChat?
+    /// Spoken/source language code declared in the prompt (see ScenePacketTranslator).
+    private let sourceLang: String?
 
-    public init(modelPaths: ModelPaths, chat: LlamaChat? = nil) {
+    public init(modelPaths: ModelPaths, chat: LlamaChat? = nil, sourceLang: String? = nil) {
         self.modelPaths = modelPaths
         self.chat = chat
+        self.sourceLang = sourceLang
     }
 
     /// PROMPT SHAPE (documented contract):
@@ -76,11 +79,13 @@ public struct DictaLMTranslator: BibleAwareTranslator {
         var parts: [String] = []
 
         parts.append("""
-        You are an expert subtitle translator. Translate the SOURCE line into \
-        \(targetLang). Output ONLY the translated line, no commentary. Preserve \
-        meaning and natural spoken register. Apply gendered grammar correctly \
-        based on the SPEAKER and ADDRESSEE genders given below. Use the GLOSSARY \
-        name translations verbatim — never invent or vary a character's name.
+        You are an expert subtitle translator. Translate the SOURCE line \
+        \(ScenePacketTranslator.direction(source: sourceLang, target: targetLang)), staying FAITHFUL to exactly what it says. Output ONLY the \
+        translated line, no commentary. Convey the full meaning — omit nothing, add nothing, \
+        do not paraphrase or soften — while writing natural, idiomatic spoken \
+        \(LanguageName.of(targetLang)). Apply gendered grammar correctly based on the SPEAKER and \
+        ADDRESSEE genders given below. Use the GLOSSARY name translations verbatim — never \
+        invent or vary a character's name.
         """)
 
         parts.append("--- CONTEXT ---")
@@ -180,8 +185,10 @@ public struct DictaLMTranslator: BibleAwareTranslator {
         guard let chat else { return chunk.map { "[\(targetLang)] \($0)" } }
         let prompt = buildBatchPrompt(chunk, targetLang: targetLang,
                                       attributions: attributions, characters: characters)
+        let sourceChars = chunk.reduce(0) { $0 + $1.count }
+        let maxTokens = max(220, min(760, sourceChars + 120))
         let raw = try await chat.complete(system: nil, user: prompt,
-                                          maxTokens: 60 * chunk.count + 80, temperature: 0.2)
+                                          maxTokens: maxTokens, temperature: 0.2)
         let parsed = Self.parseNumbered(raw, expected: chunk.count)
         if parsed.count == chunk.count, !parsed.contains(where: { $0.isEmpty }) {
             return parsed
@@ -200,13 +207,16 @@ public struct DictaLMTranslator: BibleAwareTranslator {
                           characters: [String: String] = [:]) -> String {
         var parts: [String] = []
         parts.append("""
-        You are an expert subtitle translator. Translate EACH numbered line into \
-        \(targetLang). Use natural spoken register. Each line is tagged \
+        You are an expert subtitle translator. Translate EACH numbered line \
+        \(ScenePacketTranslator.direction(source: sourceLang, target: targetLang)), staying FAITHFUL to exactly what it says — convey the full \
+        meaning, omit nothing, add nothing, do not paraphrase or soften — while writing \
+        natural, idiomatic spoken \(LanguageName.of(targetLang)). Each line is tagged \
         [s=<speaker> a=<addressee>] (m=male, f=female, u=unknown) — apply the correct \
-        \(targetLang) gendered forms (verbs, adjectives, 1st- and 2nd-person \
+        \(LanguageName.of(targetLang)) gendered forms (verbs, adjectives, 1st- and 2nd-person \
         pronouns) to match the SPEAKER and ADDRESSEE. When a tag is u, infer gender \
         from names/pronouns/context. Do NOT output the tags. Output EXACTLY one line \
         per input, same order, "<number>. <translation>" — no notes, no blank lines.
+        After the final numbered translation, output a newline followed by END.
         """)
         if !characters.isEmpty {
             let list = characters.sorted { $0.key < $1.key }

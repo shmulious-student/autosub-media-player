@@ -1,0 +1,45 @@
+# Codex CLI configuration for the AI Subs Player plan.
+# Copy to ~/.codex/config.toml, or merge the [profiles.*] blocks into your existing file.
+#
+# Verify the model slugs against `codex --help` and your account before a long run:
+# the Codex lineup moved twice in 2026, and GPT-5.4 / GPT-5.4-mini left Codex on
+# 31 August 2026, replaced by gpt-5.6-terra and gpt-5.6-luna.
+
+model = "gpt-5.6-terra"
+model_reasoning_effort = "medium"
+model_reasoning_summary = "concise"
+
+# Ask before anything outside the workspace. Raise to "on-failure" once you trust a run.
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = true   # needed: npm install, Ollama pulls, TMDB, OpenSubtitles
+
+# --- one profile per model tier in the plan -------------------------------
+
+# Top tier. The libmpv native addon spike (1.1) and the play-first state
+# machine (2.1). Also the pre-release security review.
+[profiles.astra]
+model = "gpt-6-astra"
+model_reasoning_effort = "xhigh"
+model_reasoning_summary = "detailed"
+
+# Cross-cutting work with invariants to protect: setup and defaults (1.2),
+# online subtitles (2.2), cache invalidation (2.3), language handling (3.1),
+# and the end-of-phase code reviews.
+[profiles.sol]
+model = "gpt-5.6-sol"
+model_reasoning_effort = "high"
+
+# The workhorse. Well-specified UI and wiring: library (1.3), player controls
+# (2.4), docked panel (2.5), settings (3.2), status chips (3.3), queue (3.4).
+[profiles.terra]
+model = "gpt-5.6-terra"
+model_reasoning_effort = "medium"
+
+# Mechanical work with an obvious pass or fail: rename (1.4), export (2.6),
+# icon swap (3.5).
+[profiles.luna]
+model = "gpt-5.6-luna"
+model_reasoning_effort = "low"

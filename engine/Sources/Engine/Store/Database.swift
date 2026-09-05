@@ -40,6 +40,11 @@ public final class AppDatabase: @unchecked Sendable {
         migrator.registerMigration("v1") { db in
             try db.execute(sql: schemaV1)
         }
+        migrator.registerMigration("v2_job_history") { db in
+            try db.execute(sql: "ALTER TABLE job ADD COLUMN started_at REAL")
+            try db.execute(sql: "ALTER TABLE job ADD COLUMN ended_at REAL")
+            try db.execute(sql: "ALTER TABLE job ADD COLUMN rating_json TEXT")
+        }
         return migrator
     }
 }

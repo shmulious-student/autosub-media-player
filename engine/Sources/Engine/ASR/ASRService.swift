@@ -8,15 +8,18 @@
 import Foundation
 import WhisperKit
 
-/// One recognized word with timing (ms).
+/// One recognized word with timing (ms) and model confidence.
 public struct ASRWord: Codable, Sendable {
     public var text: String
     public var startMs: Int
     public var endMs: Int
-    public init(text: String, startMs: Int, endMs: Int) {
+    /// WhisperKit per-word probability (0…1), nil when the ASR doesn't expose it.
+    public var probability: Double?
+    public init(text: String, startMs: Int, endMs: Int, probability: Double? = nil) {
         self.text = text
         self.startMs = startMs
         self.endMs = endMs
+        self.probability = probability
     }
 }
 
@@ -25,11 +28,22 @@ public struct ASRSegment: Codable, Sendable {
     public var startMs: Int
     public var endMs: Int
     public var words: [ASRWord]
-    public init(text: String, startMs: Int, endMs: Int, words: [ASRWord] = []) {
+    /// Mean token log-probability (higher = more confident; ~ -1.0 ≈ p 0.37).
+    public var avgLogprob: Double?
+    /// No-speech probability (note: unimplemented in the current WhisperKit, always 0).
+    public var noSpeechProb: Double?
+    /// gzip compression ratio of the segment text — high (>2.4) signals repetition.
+    public var compressionRatio: Double?
+    public init(text: String, startMs: Int, endMs: Int, words: [ASRWord] = [],
+                avgLogprob: Double? = nil, noSpeechProb: Double? = nil,
+                compressionRatio: Double? = nil) {
         self.text = text
         self.startMs = startMs
         self.endMs = endMs
         self.words = words
+        self.avgLogprob = avgLogprob
+        self.noSpeechProb = noSpeechProb
+        self.compressionRatio = compressionRatio
     }
 }
 
@@ -68,6 +82,53 @@ public actor WhisperKitASR: ASRService {
         self.modelName = modelName
     }
 
+    /// Pick the most accurate WhisperKit model that is ACTUALLY INSTALLED under
+    /// `modelPaths/whisperkit`, by accuracy priority (large-v3-turbo ▸ large-v3 ▸
+    /// large ▸ medium ▸ small ▸ base ▸ tiny). Falls back to "openai_whisper-base" so
+    /// a fresh install (only base present) still runs — the accuracy win simply waits
+    /// until a bigger model is downloaded. (WhisperKit loads local-only: download=false.)
+    public static func resolveBestModel(
+        modelPaths: ModelPaths, fileManager: FileManager = .default
+    ) -> String {
+        let dir = modelPaths.whisperKit
+        let entries = (try? fileManager.contentsOfDirectory(atPath: dir.path)) ?? []
+        let folders = entries.filter { name in
+            guard !name.hasPrefix(".") else { return false }
+            var isDir: ObjCBool = false
+            return fileManager.fileExists(
+                atPath: dir.appendingPathComponent(name).path, isDirectory: &isDir) && isDir.boolValue
+        }
+        func rank(_ name: String) -> Int {
+            let n = name.lowercased()
+            if n.contains("large-v3"), n.contains("turbo") { return 7 }
+            if n.contains("large-v3") { return 6 }
+            if n.contains("large") { return 5 }
+            if n.contains("medium") { return 4 }
+            if n.contains("small") { return 3 }
+            if n.contains("base") { return 2 }
+            if n.contains("tiny") { return 1 }
+            return 0
+        }
+        return folders.filter { rank($0) > 0 }.max { rank($0) < rank($1) } ?? "openai_whisper-base"
+    }
+
+    /// Map an ISO-639 audio-track tag (often 639-2/B like "eng", "ger", "heb") to the
+    /// 2-letter code Whisper expects, or nil to let WhisperKit auto-detect. Conservative:
+    /// only returns a hint we're confident about, so a stray tag never misguides ASR.
+    public static func whisperLanguageHint(_ iso: String?) -> String? {
+        guard let raw = iso?.lowercased().trimmingCharacters(in: .whitespaces), !raw.isEmpty,
+              raw != "und" else { return nil }
+        let map: [String: String] = [
+            "eng": "en", "heb": "he", "iw": "he", "ara": "ar", "rus": "ru", "spa": "es",
+            "fra": "fr", "fre": "fr", "deu": "de", "ger": "de", "ita": "it", "por": "pt",
+            "nld": "nl", "dut": "nl", "pol": "pl", "tur": "tr", "fas": "fa", "per": "fa",
+            "ukr": "uk", "jpn": "ja", "kor": "ko", "zho": "zh", "chi": "zh", "hin": "hi",
+        ]
+        if let two = map[raw] { return two }
+        if raw.count == 2 { return raw }                 // already 2-letter
+        return nil
+    }
+
     /// Lazily load (once) and return the warm WhisperKit pipeline.
     private func warmPipe() async throws -> WhisperKit {
         if let pipe { return pipe }
@@ -94,14 +155,19 @@ public actor WhisperKitASR: ASRService {
         let results = try await pipe.transcribe(audioArray: samples, decodeOptions: options)
 
         let segments: [ASRSegment] = results.flatMap { $0.segments }.map { seg in
-            ASRSegment(
+            let words: [ASRWord] = (seg.words ?? []).map { w in
+                ASRWord(text: w.word.trimmingCharacters(in: .whitespaces),
+                        startMs: Int(w.start * 1000), endMs: Int(w.end * 1000),
+                        probability: Double(w.probability))
+            }
+            return ASRSegment(
                 text: seg.text.trimmingCharacters(in: .whitespaces),
                 startMs: Int(seg.start * 1000),
                 endMs: Int(seg.end * 1000),
-                words: (seg.words ?? []).map {
-                    ASRWord(text: $0.word.trimmingCharacters(in: .whitespaces),
-                            startMs: Int($0.start * 1000), endMs: Int($0.end * 1000))
-                }
+                words: words,
+                avgLogprob: Double(seg.avgLogprob),
+                noSpeechProb: Double(seg.noSpeechProb),
+                compressionRatio: Double(seg.compressionRatio)
             )
         }
         let language = results.first?.language ?? sourceLanguageHint ?? "en"

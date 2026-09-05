@@ -65,12 +65,13 @@ public struct SpeakerAttributor: Sendable {
         "f" (female), or "u" (unknown).
         \(charBlock)Output ONLY a JSON array, one object per line, no commentary:
         [{"i":1,"sg":"m","ag":"f"},{"i":2,"sg":"f","ag":"m"}]
+        After the JSON array, output a newline followed by END.
 
         LINES:
         \(numbered)
         """
         let raw = try await chat.complete(system: nil, user: prompt,
-                                          maxTokens: max(256, chunk.count * 20),
+                                          maxTokens: max(180, min(620, chunk.count * 12 + 80)),
                                           temperature: 0.1)
         return Self.parse(raw)
     }

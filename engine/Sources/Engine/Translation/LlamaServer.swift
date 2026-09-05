@@ -10,9 +10,52 @@
 
 import Foundation
 
+/// Real server-reported token accounting for one completion. Lets the benchmark
+/// measure the ACTUAL bottleneck (output tokens + decode rate) instead of guessing
+/// from prompt character counts. `nil` rates mean the transport didn't report them
+/// (e.g. a scripted test mock).
+public struct LlamaUsage: Sendable {
+    public var promptTokens: Int
+    public var completionTokens: Int
+    /// Prompt ingest rate (tokens/sec) — "prefill". Cheap, compute-bound.
+    public var prefillTokensPerSecond: Double
+    /// Token generation rate (tokens/sec) — "decode". The memory-bandwidth wall.
+    public var decodeTokensPerSecond: Double
+
+    public init(promptTokens: Int = 0, completionTokens: Int = 0,
+                prefillTokensPerSecond: Double = 0, decodeTokensPerSecond: Double = 0) {
+        self.promptTokens = promptTokens
+        self.completionTokens = completionTokens
+        self.prefillTokensPerSecond = prefillTokensPerSecond
+        self.decodeTokensPerSecond = decodeTokensPerSecond
+    }
+}
+
+public struct LlamaResult: Sendable {
+    public var text: String
+    public var usage: LlamaUsage?
+    public init(text: String, usage: LlamaUsage? = nil) {
+        self.text = text
+        self.usage = usage
+    }
+}
+
 /// Minimal chat interface so translators don't depend on transport details.
 public protocol LlamaChat: Sendable {
     func complete(system: String?, user: String, maxTokens: Int, temperature: Double) async throws -> String
+
+    /// Like `complete`, but also surfaces server-reported token counts + rates so
+    /// the benchmark can attribute time to prefill vs decode. Has a default
+    /// implementation that delegates to `complete` (no usage), so existing mocks
+    /// keep working unchanged.
+    func completeDetailed(system: String?, user: String, maxTokens: Int, temperature: Double) async throws -> LlamaResult
+}
+
+public extension LlamaChat {
+    func completeDetailed(system: String?, user: String, maxTokens: Int, temperature: Double) async throws -> LlamaResult {
+        let text = try await complete(system: system, user: user, maxTokens: maxTokens, temperature: temperature)
+        return LlamaResult(text: text, usage: nil)
+    }
 }
 
 public enum LlamaError: Error, CustomStringConvertible {
@@ -165,6 +208,12 @@ public struct LlamaServerClient: LlamaChat {
 
     public func complete(system: String?, user: String,
                          maxTokens: Int = 256, temperature: Double = 0.2) async throws -> String {
+        try await completeDetailed(system: system, user: user,
+                                   maxTokens: maxTokens, temperature: temperature).text
+    }
+
+    public func completeDetailed(system: String?, user: String,
+                                 maxTokens: Int = 256, temperature: Double = 0.2) async throws -> LlamaResult {
         var messages: [[String: String]] = []
         if let system, !system.isEmpty { messages.append(["role": "system", "content": system]) }
         messages.append(["role": "user", "content": user])
@@ -174,13 +223,18 @@ public struct LlamaServerClient: LlamaChat {
             "temperature": temperature,
             "max_tokens": maxTokens,
             "stream": false,
+            "stop": ["\nEND", "\n<END>", "<|im_end|>"],
             // Reuse the KV of the shared prompt prefix across calls. Every chunk in a
             // pass repeats the same instruction + character list; without this the
             // server re-processes that prefix on every request.
             "cache_prompt": true,
+            // Ask llama-server to attach its prompt/predicted timings to the response
+            // so the benchmark reads the REAL decode rate, not a wall-clock estimate.
+            "timings_per_token": false,
         ]
         var req = URLRequest(url: baseURL.appendingPathComponent("v1/chat/completions"))
         req.httpMethod = "POST"
+        req.timeoutInterval = 900
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
@@ -193,6 +247,26 @@ public struct LlamaServerClient: LlamaChat {
             let message = choices.first?["message"] as? [String: Any],
             let content = message["content"] as? String
         else { throw LlamaError.badResponse(String(decoding: data, as: UTF8.self).prefix(200).description) }
-        return content.trimmingCharacters(in: .whitespacesAndNewlines)
+        return LlamaResult(
+            text: content.trimmingCharacters(in: .whitespacesAndNewlines),
+            usage: Self.parseUsage(json)
+        )
+    }
+
+    /// Pull token counts from OpenAI-style `usage` and rates from llama.cpp's
+    /// `timings` (present on both the native and OAI-compatible endpoints).
+    static func parseUsage(_ json: [String: Any]) -> LlamaUsage {
+        var u = LlamaUsage()
+        if let usage = json["usage"] as? [String: Any] {
+            u.promptTokens = (usage["prompt_tokens"] as? Int) ?? 0
+            u.completionTokens = (usage["completion_tokens"] as? Int) ?? 0
+        }
+        if let t = json["timings"] as? [String: Any] {
+            u.prefillTokensPerSecond = (t["prompt_per_second"] as? Double) ?? 0
+            u.decodeTokensPerSecond = (t["predicted_per_second"] as? Double) ?? 0
+            if u.promptTokens == 0, let n = t["prompt_n"] as? Int { u.promptTokens = n }
+            if u.completionTokens == 0, let n = t["predicted_n"] as? Int { u.completionTokens = n }
+        }
+        return u
     }
 }

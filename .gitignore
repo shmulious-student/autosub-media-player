@@ -13,6 +13,7 @@ build/
 .pub-cache/
 .pub/
 *.iml
+.idea/
 # generated drift code (run build_runner to regenerate)
 *.g.dart
 

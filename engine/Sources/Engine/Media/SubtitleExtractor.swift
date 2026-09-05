@@ -39,13 +39,35 @@ public struct SubtitleExtractor: Sendable {
         }
     }
 
-    /// Pick the best text track to translate FROM: prefer one whose language is
-    /// NOT the target (we want the source dialogue), else the first text track.
-    public func bestTextTrack(videoPath: String, targetLang: String) throws -> SubtitleTrackInfo? {
+    /// Pick the best embedded TEXT track to translate FROM.
+    ///
+    /// When the spoken/original language is known, ONLY an embedded track in that
+    /// language is acceptable — a foreign translation track (e.g. Romanian subs on an
+    /// English film) is a lossy second-hand source and must NOT be preferred over
+    /// fetching the original subtitle or transcribing the actual audio. When the
+    /// original language is unknown, fall back to "any non-target text track".
+    public func bestTextTrack(
+        videoPath: String, targetLang: String, originalLang: String? = nil
+    ) throws -> SubtitleTrackInfo? {
         let text = (try tracks(videoPath: videoPath)).filter { $0.isTextBased }
+        return Self.selectTrack(text, targetLang: targetLang, originalLang: originalLang)
+    }
+
+    /// Pure track-selection logic (testable without ffprobe).
+    static func selectTrack(
+        _ text: [SubtitleTrackInfo], targetLang: String, originalLang: String?
+    ) -> SubtitleTrackInfo? {
         if text.isEmpty { return nil }
-        let target = String(targetLang.prefix(2)).lowercased()
-        return text.first { $0.language?.prefix(2).lowercased() != target } ?? text.first
+        func two(_ s: String?) -> String? {
+            guard let s, !s.isEmpty else { return nil }
+            return String(s.prefix(2)).lowercased()
+        }
+        if let original = two(originalLang) {
+            // Only an embedded track in the spoken language is a faithful source.
+            return text.first { two($0.language) == original }
+        }
+        let target = two(targetLang)
+        return text.first { two($0.language) != target } ?? text.first
     }
 
     /// Extract a text subtitle track to SRT and parse it into cues.
@@ -56,6 +78,44 @@ public struct SubtitleExtractor: Sendable {
         ]
         let srt = try Shell.run("ffmpeg", args)
         return Self.parseSRT(srt)
+    }
+
+    /// Parse a STANDALONE subtitle file (e.g. one fetched from an online provider)
+    /// into cues. `.srt` is parsed directly; other text formats (`.ass/.ssa/.vtt`) are
+    /// converted to SRT through the same ffmpeg path used for embedded tracks. Returns
+    /// nil when the file is missing/empty/unreadable so callers can fall through to ASR.
+    public func cuesFromFile(path: String) -> [SubtitleCue]? {
+        let url = URL(fileURLWithPath: path)
+        guard FileManager.default.fileExists(atPath: path) else { return nil }
+        let ext = url.pathExtension.lowercased()
+        if ext == "srt" || ext == "" {
+            // Subtitle sites (OpenSubtitles) commonly ship Windows-1252/Latin-1, not
+            // UTF-8 — a strict UTF-8 read throws and we'd silently fall back to ASR.
+            guard let data = try? Data(contentsOf: url), let raw = Self.decodeText(data)
+            else { return nil }
+            let cues = Self.parseSRT(raw)
+            return cues.isEmpty ? nil : cues
+        }
+        // Non-SRT text formats → let ffmpeg normalize to SRT, then parse.
+        guard let srt = try? Shell.run("ffmpeg", ["-v", "error", "-i", path, "-f", "srt", "-"])
+        else { return nil }
+        let cues = Self.parseSRT(srt)
+        return cues.isEmpty ? nil : cues
+    }
+
+    /// Decode subtitle bytes tolerantly: honor a UTF-8/UTF-16 BOM, then try UTF-8, then
+    /// fall back to Windows-1252 / Latin-1 (which map every byte, so they never fail —
+    /// keep them last). Distributor/online subs are frequently 1252, not UTF-8.
+    static func decodeText(_ data: Data) -> String? {
+        if data.starts(with: [0xEF, 0xBB, 0xBF]) {
+            return String(data: data.dropFirst(3), encoding: .utf8)
+        }
+        if data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF]) {
+            return String(data: data, encoding: .utf16)
+        }
+        if let s = String(data: data, encoding: .utf8) { return s }
+        return String(data: data, encoding: .windowsCP1252)
+            ?? String(data: data, encoding: .isoLatin1)
     }
 
     // MARK: - SRT parsing

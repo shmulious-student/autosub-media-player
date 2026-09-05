@@ -1,0 +1,1677 @@
+<title>VideoPlayerAutoSubs UX Review</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Public+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&family=Heebo:wght@500;600&display=swap">
+<style>
+  :root {
+    --ground: #f1f2f6;
+    --panel: #ffffff;
+    --panel-2: #f7f8fb;
+    --ink: #171a22;
+    --ink-2: #5b6172;
+    --ink-3: #8a90a2;
+    --line: #dcdfe8;
+    --line-2: #eceef4;
+    --accent: #3149d0;
+    --accent-soft: #e6eafc;
+    --cue: #f2c53d;
+    --cue-ink: #4a3600;
+    --crit: #c2333a; --crit-bg: #fbe9ea;
+    --high: #c96f12; --high-bg: #fdf0e1;
+    --med: #2a6fb8;  --med-bg: #e5eff9;
+    --low: #6b7280;  --low-bg: #eef0f3;
+    --ok: #237a4b;   --ok-bg: #e3f3e9;
+    --shadow: 0 1px 2px rgba(20,24,40,.06), 0 8px 24px rgba(20,24,40,.06);
+    --display: 'Bricolage Grotesque', 'Helvetica Neue', Arial, sans-serif;
+    --body: 'Public Sans', -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --mono: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+    --hebrew: 'Heebo', 'Arial Hebrew', 'Noto Sans Hebrew', sans-serif;
+    /* app mockup skin (single dark theme, matches the app) */
+    --m-bg: #0b0e14; --m-bg2: #11151f; --m-bg3: #171c28; --m-bg4: #1e2434;
+    --m-line: #232a3a; --m-fg: #e6e9f0; --m-dim: #9aa3b5; --m-faint: #66708a;
+    --m-accent: #5b8cff; --m-accent-2: #2b4ea8; --m-good: #3fd07f; --m-warn: #ffb454; --m-bad: #ff6b6b;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0e1016; --panel: #161923; --panel-2: #1b1f2b;
+      --ink: #e8eaf1; --ink-2: #a3a9bb; --ink-3: #737a8e;
+      --line: #282d3c; --line-2: #20242f;
+      --accent: #8ea2ff; --accent-soft: #232a48;
+      --cue: #f2c53d; --cue-ink: #2b2000;
+      --crit: #ff7a80; --crit-bg: #3a1f22;
+      --high: #ffb066; --high-bg: #3a2a18;
+      --med: #7fb3f0;  --med-bg: #1b2a3d;
+      --low: #a0a6b8;  --low-bg: #262a36;
+      --ok: #6dd39a;   --ok-bg: #173224;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0e1016; --panel: #161923; --panel-2: #1b1f2b;
+    --ink: #e8eaf1; --ink-2: #a3a9bb; --ink-3: #737a8e;
+    --line: #282d3c; --line-2: #20242f;
+    --accent: #8ea2ff; --accent-soft: #232a48;
+    --cue: #f2c53d; --cue-ink: #2b2000;
+    --crit: #ff7a80; --crit-bg: #3a1f22;
+    --high: #ffb066; --high-bg: #3a2a18;
+    --med: #7fb3f0;  --med-bg: #1b2a3d;
+    --low: #a0a6b8;  --low-bg: #262a36;
+    --ok: #6dd39a;   --ok-bg: #173224;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; animation: none !important; } }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: var(--body); font-size: 15px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); }
+  h1, h2, h3, h4 { font-family: var(--display); text-wrap: balance; margin: 0; line-height: 1.15; }
+  h1 { font-size: 40px; font-weight: 700; letter-spacing: -.01em; }
+  h2 { font-size: 26px; font-weight: 700; }
+  h3 { font-size: 18px; font-weight: 700; }
+  h4 { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-2); }
+  p { margin: 0; max-width: 68ch; }
+  code, kbd { font-family: var(--mono); font-size: .86em; }
+  code { background: var(--panel-2); border: 1px solid var(--line-2); padding: .08em .35em; border-radius: 4px; }
+  kbd {
+    display: inline-block; min-width: 1.7em; text-align: center; padding: .1em .45em;
+    background: var(--cue); color: var(--cue-ink); border-radius: 5px; font-weight: 500;
+    box-shadow: inset 0 -2px 0 rgba(0,0,0,.18);
+  }
+  .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+  .muted { color: var(--ink-2); }
+  .small { font-size: 13px; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* shell */
+  .shell { display: grid; grid-template-columns: 236px minmax(0, 1fr); min-height: 100vh; }
+  nav.rail {
+    position: sticky; top: 0; height: 100vh; overflow: auto; padding: 22px 16px;
+    border-right: 1px solid var(--line); background: var(--panel);
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  nav.rail .brand { font-family: var(--display); font-weight: 700; font-size: 15px; padding: 4px 10px 14px; line-height: 1.2; }
+  nav.rail .brand small { display: block; font-family: var(--body); font-weight: 500; color: var(--ink-3); font-size: 12px; margin-top: 3px; }
+  nav.rail a {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+    padding: 7px 10px; border-radius: 7px; color: var(--ink-2); text-decoration: none; font-size: 14px; font-weight: 500;
+  }
+  nav.rail a:hover { background: var(--panel-2); color: var(--ink); }
+  nav.rail a.active { background: var(--accent-soft); color: var(--accent); }
+  nav.rail a .n { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+  nav.rail .foot { margin-top: auto; padding: 12px 10px 0; font-size: 12px; color: var(--ink-3); line-height: 1.5; }
+  main { padding: 40px 48px 96px; max-width: 1080px; }
+  section.sec { padding: 40px 0; border-top: 1px solid var(--line); scroll-margin-top: 20px; }
+  section.sec:first-of-type { border-top: 0; padding-top: 0; }
+  .sec-head { display: grid; gap: 8px; margin-bottom: 26px; }
+  .sec-head p { color: var(--ink-2); }
+  .stack { display: grid; gap: 16px; }
+  .cols { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+
+  /* hero */
+  .hero { display: grid; gap: 18px; padding-bottom: 8px; }
+  .hero .lede { font-size: 18px; color: var(--ink-2); max-width: 62ch; }
+  .verdict {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 10px;
+  }
+  .verdict .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .verdict .tile .k { font-size: 12px; color: var(--ink-3); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+  .verdict .tile .v { font-family: var(--display); font-size: 28px; font-weight: 700; margin-top: 4px; line-height: 1; }
+  .verdict .tile .v small { font-family: var(--body); font-size: 12px; font-weight: 500; color: var(--ink-2); margin-left: 6px; }
+  .moves { counter-reset: mv; display: grid; gap: 10px; }
+  .moves .mv { display: grid; grid-template-columns: 34px 1fr; gap: 12px; align-items: start; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .moves .mv::before { counter-increment: mv; content: counter(mv); font-family: var(--display); font-weight: 700; font-size: 20px; color: var(--accent); line-height: 1.1; }
+  .moves .mv b { display: block; margin-bottom: 2px; }
+
+  /* findings */
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; align-items: center; }
+  .filters button {
+    font: inherit; font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 999px; cursor: pointer;
+    background: var(--panel); border: 1px solid var(--line); color: var(--ink-2);
+  }
+  .filters button[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .filters .cnt { margin-left: auto; font-size: 13px; color: var(--ink-3); }
+  .finding {
+    display: grid; grid-template-columns: 92px 1fr; gap: 16px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 16px 18px; align-items: start;
+  }
+  .finding[hidden] { display: none; }
+  .sev { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 4px 8px; border-radius: 6px; text-align: center; }
+  .sev.crit { background: var(--crit-bg); color: var(--crit); }
+  .sev.high { background: var(--high-bg); color: var(--high); }
+  .sev.med { background: var(--med-bg); color: var(--med); }
+  .sev.low { background: var(--low-bg); color: var(--low); }
+  .finding h3 { font-size: 16px; margin-bottom: 4px; }
+  .finding .where { font-family: var(--mono); font-size: 12px; color: var(--ink-3); margin-bottom: 8px; }
+  .finding .fix { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); display: grid; grid-template-columns: 34px 1fr; gap: 8px; }
+  .finding .fix::before { content: 'Fix'; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--ok); padding-top: 3px; }
+
+  /* flow stepper */
+  .flow { display: grid; grid-template-columns: 250px minmax(0,1fr); gap: 20px; }
+  .steps { display: grid; gap: 4px; align-content: start; }
+  .steps button {
+    font: inherit; text-align: left; display: grid; grid-template-columns: 26px 1fr; gap: 10px; align-items: start;
+    padding: 10px 12px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--ink-2); cursor: pointer;
+  }
+  .steps button .i { font-family: var(--mono); font-size: 12px; color: var(--ink-3); padding-top: 3px; }
+  .steps button b { display: block; color: var(--ink); font-weight: 600; }
+  .steps button small { color: var(--ink-3); }
+  .steps button[aria-selected="true"] { background: var(--panel); border-color: var(--line); box-shadow: var(--shadow); }
+  .step-body { display: grid; gap: 14px; }
+  .step-body[hidden] { display: none; }
+  .step-body .why { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 6px; }
+  .step-body .why b { color: var(--accent); }
+  .flow-diagram { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 20px; }
+  .flow-diagram svg { display: block; min-width: 760px; width: 100%; height: auto; }
+  .flow-diagram text { font-family: var(--body); font-size: 12px; fill: var(--ink); }
+  .flow-diagram .lbl { fill: var(--ink-3); font-size: 11px; }
+  .flow-diagram rect.box { fill: var(--panel-2); stroke: var(--line); }
+  .flow-diagram rect.hot { fill: var(--accent-soft); stroke: var(--accent); }
+  .flow-diagram path { fill: none; stroke: var(--ink-3); stroke-width: 1.4; marker-end: url(#arr); }
+
+  /* ui system */
+  .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+  .sw { border-radius: 8px; overflow: hidden; border: 1px solid var(--line); background: var(--panel); }
+  .sw .c { height: 46px; }
+  .sw .t { padding: 8px 10px; font-size: 12px; }
+  .sw .t b { display: block; }
+  .sw .t code { font-size: 11px; }
+  .ctrl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .ctrl { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 10px; }
+  .ctrl h3 { font-size: 15px; }
+  .ctrl .demo { background: var(--m-bg2); border: 1px solid var(--m-line); border-radius: 8px; padding: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--m-fg); }
+  .rules { display: grid; gap: 8px; }
+  .rules .r { display: grid; grid-template-columns: 26px 1fr; gap: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; }
+  .rules .r::before { content: '§'; color: var(--accent); font-family: var(--display); font-weight: 700; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  .tbl { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line-2); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); font-weight: 600; background: var(--panel-2); }
+  tr:last-child td { border-bottom: 0; }
+  .keys td:first-child { white-space: nowrap; }
+
+  /* screens tabs */
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+  .tabs button { font: inherit; font-size: 13px; font-weight: 600; padding: 7px 12px; border-radius: 7px; border: 1px solid transparent; background: transparent; color: var(--ink-2); cursor: pointer; }
+  .tabs button[aria-selected="true"] { background: var(--panel); border-color: var(--line); color: var(--ink); box-shadow: var(--shadow); }
+  .screen { display: grid; gap: 14px; }
+  .screen[hidden] { display: none; }
+  .notes { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .note { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 13px; display: grid; grid-template-columns: 22px 1fr; gap: 8px; }
+  .note i { font-style: normal; font-family: var(--mono); font-size: 11px; color: var(--panel); background: var(--accent); border-radius: 50%; width: 18px; height: 18px; display: inline-grid; place-items: center; }
+  .toggles { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; color: var(--ink-2); }
+  .toggles .grp { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; background: var(--panel); }
+  .toggles .grp button { font: inherit; font-size: 12px; font-weight: 600; padding: 5px 10px; border: 0; background: transparent; color: var(--ink-2); cursor: pointer; }
+  .toggles .grp button + button { border-left: 1px solid var(--line); }
+  .toggles .grp button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+
+  /* ---------- app mockup skin ---------- */
+  .frame {
+    background: var(--m-bg); color: var(--m-fg); border-radius: 12px; overflow: hidden; border: 1px solid #2a3040;
+    box-shadow: 0 30px 60px rgba(0,0,0,.35); font-size: 13px; line-height: 1.4; position: relative;
+    font-family: -apple-system, 'Public Sans', 'Segoe UI', sans-serif;
+  }
+  .frame .callout { position: absolute; z-index: 5; font-family: var(--mono); font-size: 11px; color: #111; background: var(--cue); border-radius: 50%; width: 20px; height: 20px; display: grid; place-items: center; box-shadow: 0 0 0 2px rgba(0,0,0,.5); }
+  .tb { height: 38px; display: flex; align-items: center; gap: 10px; padding: 0 12px; background: var(--m-bg2); border-bottom: 1px solid var(--m-line); }
+  .tb .lights { display: flex; gap: 6px; margin-right: 6px; }
+  .tb .lights i { width: 11px; height: 11px; border-radius: 50%; background: #3a4052; }
+  .tb .lights i:nth-child(1) { background: #ff5f57; } .tb .lights i:nth-child(2) { background: #febc2e; } .tb .lights i:nth-child(3) { background: #28c840; }
+  .tb .title { color: var(--m-dim); font-size: 12px; }
+  .tb .sp { flex: 1; }
+  .m-btn { font: inherit; font-size: 12px; color: var(--m-fg); background: var(--m-bg3); border: 1px solid var(--m-line); border-radius: 7px; padding: 5px 10px; white-space: nowrap; }
+  .m-btn.pri { background: var(--m-accent); border-color: transparent; color: #fff; font-weight: 600; }
+  .m-btn.ghost { background: transparent; }
+  .m-btn.danger { color: var(--m-bad); }
+  .m-btn.sm { padding: 3px 8px; font-size: 11px; }
+  .m-chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--m-line); color: var(--m-dim); background: var(--m-bg3); white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
+  .m-chip::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .m-chip.instant { color: var(--m-good); border-color: #20402f; }
+  .m-chip.ready { color: var(--m-dim); }
+  .m-chip.busy { color: var(--m-accent); border-color: #2b3a63; }
+  .m-chip.asr { color: var(--m-warn); border-color: #4a3a1f; }
+  .m-chip.attn { color: var(--m-bad); border-color: #4a2626; }
+  .m-chip.nodot::before { display: none; }
+  .m-seg { display: inline-flex; border: 1px solid var(--m-line); border-radius: 7px; overflow: hidden; background: var(--m-bg); }
+  .m-seg span { padding: 4px 10px; font-size: 12px; color: var(--m-dim); }
+  .m-seg span + span { border-left: 1px solid var(--m-line); }
+  .m-seg span.on { background: var(--m-bg4); color: var(--m-fg); font-weight: 600; }
+  .m-switch { width: 30px; height: 18px; border-radius: 9px; background: var(--m-bg4); border: 1px solid var(--m-line); position: relative; display: inline-block; vertical-align: middle; }
+  .m-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--m-dim); }
+  .m-switch.on { background: var(--m-accent); border-color: transparent; } .m-switch.on::after { left: 14px; background: #fff; }
+  .m-input { background: var(--m-bg); border: 1px solid var(--m-line); border-radius: 7px; padding: 5px 9px; color: var(--m-fg); font-size: 12px; display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .m-input .ph { color: var(--m-faint); }
+  .m-input .arrow { margin-left: auto; color: var(--m-faint); }
+  .m-label { font-size: 11px; color: var(--m-dim); margin-bottom: 4px; display: block; }
+  .m-slider { height: 4px; background: var(--m-bg4); border-radius: 2px; position: relative; flex: 1; min-width: 80px; }
+  .m-slider::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: var(--v, 60%); background: var(--m-accent); border-radius: 2px; }
+  .m-slider::after { content: ''; position: absolute; top: -4px; left: var(--v, 60%); width: 12px; height: 12px; border-radius: 50%; background: #fff; transform: translateX(-50%); }
+  .m-toast { background: var(--m-bg3); border: 1px solid var(--m-line); border-radius: 8px; padding: 8px 12px; font-size: 12px; display: inline-flex; align-items: center; gap: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+  .m-toast .ok { color: var(--m-good); }
+  .m-pill { background: rgba(11,14,20,.85); border: 1px solid var(--m-line); border-radius: 999px; padding: 4px 10px 4px 8px; font-size: 11px; display: inline-flex; align-items: center; gap: 7px; color: var(--m-fg); backdrop-filter: blur(6px); }
+  .m-pill .spin { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--m-accent); border-top-color: transparent; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .m-key { font-family: var(--mono); font-size: 10px; background: var(--m-bg4); border: 1px solid var(--m-line); border-radius: 4px; padding: 1px 5px; color: var(--m-dim); }
+  .m-menu { background: var(--m-bg2); border: 1px solid var(--m-line); border-radius: 8px; padding: 5px; min-width: 200px; box-shadow: 0 14px 30px rgba(0,0,0,.5); font-size: 12.5px; }
+  .m-menu div { padding: 5px 10px 5px 24px; border-radius: 5px; display: flex; gap: 12px; position: relative; }
+  .m-menu div.on::before { content: '✓'; position: absolute; left: 8px; }
+  .m-menu div.dis { color: var(--m-faint); }
+  .m-menu div .k { margin-left: auto; color: var(--m-faint); font-family: var(--mono); font-size: 11px; }
+  .m-menu hr { border: 0; border-top: 1px solid var(--m-line); margin: 5px 4px; }
+  .m-menu div:hover { background: var(--m-bg4); }
+  .m-menu .hd { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--m-faint); padding-left: 10px; }
+
+  /* setup screen */
+  .setup { padding: 34px 44px; display: grid; gap: 18px; max-width: 640px; margin: 0 auto; }
+  .setup h2 { font-family: var(--display); font-size: 24px; color: var(--m-fg); }
+  .check { display: grid; grid-template-columns: 22px 1fr auto; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--m-line); border-radius: 9px; background: var(--m-bg2); }
+  .check .st { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; }
+  .check .st.ok { background: #1d3a2a; color: var(--m-good); } .check .st.warn { background: #3d2f17; color: var(--m-warn); } .check .st.busy { border: 2px solid var(--m-accent); border-top-color: transparent; animation: spin 1s linear infinite; } .check .st.opt { border: 1px dashed var(--m-faint); }
+  .check b { display: block; font-weight: 600; } .check small { color: var(--m-dim); display: block; }
+  .check .act { display: flex; gap: 6px; }
+  .pbar { height: 4px; background: var(--m-bg4); border-radius: 2px; overflow: hidden; margin-top: 6px; } .pbar i { display: block; height: 100%; width: var(--v, 40%); background: var(--m-accent); }
+
+  /* library screen */
+  .lib { display: grid; grid-template-columns: 230px 1fr; min-height: 500px; }
+  .lib .side { background: var(--m-bg2); border-right: 1px solid var(--m-line); padding: 10px; display: grid; gap: 6px; align-content: start; }
+  .lib .side .h { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--m-faint); padding: 8px 8px 2px; }
+  .lib .side .it { padding: 6px 10px; border-radius: 7px; display: flex; justify-content: space-between; gap: 8px; color: var(--m-dim); }
+  .lib .side .it.on { background: var(--m-bg4); color: var(--m-fg); }
+  .lib .side .it .n { font-family: var(--mono); font-size: 11px; color: var(--m-faint); }
+  .lib .body { padding: 14px 18px; display: grid; gap: 16px; align-content: start; min-width: 0; }
+  .lib .hd { display: flex; gap: 8px; align-items: center; }
+  .lib .hd h3 { font-family: var(--display); font-size: 18px; color: var(--m-fg); }
+  .cw { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .card { background: var(--m-bg2); border: 1px solid var(--m-line); border-radius: 9px; overflow: hidden; }
+  .card .art { height: 74px; background: linear-gradient(135deg, #2b3350, #141826); position: relative; }
+  .card .art.b { background: linear-gradient(135deg, #4a2e2e, #1a1417); } .card .art.c { background: linear-gradient(135deg, #24463f, #101a18); } .card .art.d { background: linear-gradient(135deg, #3f3a22, #1a1710); }
+  .card .art .pr { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--m-accent); width: var(--v, 40%); }
+  .card .art .ply { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 18px; opacity: .75; }
+  .card .t { padding: 7px 9px; } .card .t b { display: block; font-weight: 600; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .card .t small { color: var(--m-dim); font-size: 11px; }
+  .rows { display: grid; }
+  .row-h { display: grid; grid-template-columns: 1fr 120px 96px 60px; gap: 10px; padding: 4px 10px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--m-faint); }
+  .row { display: grid; grid-template-columns: 1fr 120px 96px 60px; gap: 10px; align-items: center; padding: 7px 10px; border-radius: 7px; }
+  .row:hover { background: var(--m-bg3); }
+  .row.on { background: var(--m-bg4); outline: 1px solid #2c3a63; }
+  .row.grp { color: var(--m-dim); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; padding-top: 12px; }
+  .row .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .row .nm small { color: var(--m-faint); margin-left: 6px; }
+  .row .dur { color: var(--m-dim); font-family: var(--mono); font-size: 11px; }
+  .ctx { position: absolute; }
+
+  /* player screen */
+  .player { display: grid; grid-template-rows: 1fr auto; min-height: 520px; position: relative; }
+  .player.with-panel { grid-template-columns: 1fr 320px; }
+  .player.with-panel .stage, .player.with-panel .transport { grid-column: 1; }
+  .stage { position: relative; background: #000; overflow: hidden; min-height: 380px; }
+  .stage .vid { position: absolute; inset: 0; background:
+      radial-gradient(60% 80% at 30% 40%, #3a4a6a 0%, transparent 60%),
+      radial-gradient(50% 60% at 75% 70%, #6a3f2f 0%, transparent 60%),
+      linear-gradient(180deg, #0c1020, #05070c); }
+  .stage .vid::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(255,255,255,.015) 0 1px, transparent 1px 3px); }
+  .stage .cue { position: absolute; left: 8%; right: 8%; bottom: 9%; text-align: center; direction: rtl; font-family: var(--hebrew); font-weight: 600; font-size: 22px; color: #fff; text-shadow: 0 0 3px #000, 0 2px 3px #000, 0 0 8px rgba(0,0,0,.8); line-height: 1.3; }
+  .stage .cue .src { display: block; direction: ltr; font-family: var(--body); font-weight: 400; font-size: 13px; color: #d5d9e3; margin-top: 2px; }
+  .stage .cue.hidden-src .src { display: none; }
+  .stage.ctrls-on .cue { bottom: 24%; }
+  .stage .top { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; gap: 8px; align-items: center; }
+  .stage .top .sp { flex: 1; }
+  .stage .hover { position: absolute; left: 0; right: 0; bottom: 0; padding: 40px 14px 10px; background: linear-gradient(180deg, transparent, rgba(0,0,0,.75)); display: grid; gap: 8px; transition: opacity .2s; }
+  .stage .hover.off { opacity: 0; pointer-events: none; }
+  .scrub { position: relative; height: 14px; display: flex; align-items: center; }
+  .scrub .t { position: absolute; left: 0; right: 0; height: 4px; border-radius: 2px; background: #333a4d; }
+  .scrub .cache { position: absolute; height: 4px; border-radius: 2px; background: #4a5470; }
+  .scrub .run { position: absolute; height: 4px; border-radius: 2px; background: rgba(91,140,255,.45); }
+  .scrub .pl { position: absolute; height: 4px; border-radius: 2px; background: var(--m-accent); }
+  .scrub .kn { position: absolute; width: 12px; height: 12px; border-radius: 50%; background: #fff; transform: translateX(-50%); box-shadow: 0 1px 4px rgba(0,0,0,.6); }
+  .scrub .tip { position: absolute; bottom: 16px; transform: translateX(-50%); font-family: var(--mono); font-size: 10px; background: var(--m-bg3); border: 1px solid var(--m-line); padding: 2px 6px; border-radius: 4px; white-space: nowrap; }
+  .ctrls { display: flex; align-items: center; gap: 8px; }
+  .ctrls .ico { width: 30px; height: 30px; border-radius: 7px; display: grid; place-items: center; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08); font-size: 13px; }
+  .ctrls .ico.big { width: 36px; height: 36px; background: #fff; color: #000; border-radius: 50%; }
+  .ctrls .time { font-family: var(--mono); font-size: 11px; color: var(--m-dim); margin-left: 4px; }
+  .ctrls .sp { flex: 1; }
+  .ctrls .vol { display: flex; align-items: center; gap: 6px; width: 110px; }
+  .transport { background: var(--m-bg2); border-top: 1px solid var(--m-line); padding: 8px 12px; display: grid; gap: 6px; }
+  .transport.off { display: none; }
+  .legend { display: flex; gap: 14px; font-size: 11px; color: var(--m-dim); flex-wrap: wrap; }
+  .legend i { display: inline-block; width: 18px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+
+  /* side panel */
+  .panel { grid-row: 1 / span 2; grid-column: 2; background: var(--m-bg2); border-left: 1px solid var(--m-line); display: grid; grid-template-rows: auto auto 1fr auto; min-height: 0; }
+  .panel[hidden] { display: none; }
+  .panel .ph { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--m-line); }
+  .panel .ptabs { display: flex; gap: 2px; padding: 8px 10px 0; }
+  .panel .ptabs span { padding: 5px 10px; border-radius: 6px 6px 0 0; font-size: 12px; color: var(--m-dim); }
+  .panel .ptabs span.on { background: var(--m-bg3); color: var(--m-fg); border: 1px solid var(--m-line); border-bottom-color: var(--m-bg3); }
+  .panel .pbody { overflow: auto; padding: 8px 10px; border-top: 1px solid var(--m-line); margin-top: -1px; display: grid; gap: 2px; align-content: start; }
+  .panel .pfoot { padding: 8px 10px; border-top: 1px solid var(--m-line); display: flex; gap: 6px; align-items: center; font-size: 11px; color: var(--m-dim); }
+  .cuerow { display: grid; grid-template-columns: 44px 1fr; gap: 8px; padding: 6px 8px; border-radius: 6px; font-size: 12px; align-items: start; }
+  .cuerow .tc { font-family: var(--mono); font-size: 10px; color: var(--m-faint); padding-top: 2px; }
+  .cuerow .he { direction: rtl; text-align: right; font-family: var(--hebrew); font-weight: 500; }
+  .cuerow .en { color: var(--m-dim); font-size: 11px; }
+  .cuerow.on { background: var(--m-bg4); outline: 1px solid #2c3a63; }
+  .cuerow.pend .he { color: var(--m-faint); font-style: italic; }
+  .cuerow .acts { display: flex; gap: 4px; margin-top: 4px; }
+  .charrow { display: grid; grid-template-columns: 1fr 1fr 58px; gap: 6px; align-items: center; padding: 5px 4px; border-bottom: 1px solid var(--m-line); font-size: 12px; }
+  .charrow .en { color: var(--m-dim); } .charrow .en small { display: block; color: var(--m-faint); font-size: 10px; }
+  .charrow .he { direction: rtl; font-family: var(--hebrew); }
+  .charrow .src { font-size: 9px; color: var(--m-faint); font-family: var(--mono); }
+
+  /* settings */
+  .settings { display: grid; grid-template-columns: 170px 1fr; min-height: 460px; }
+  .settings .sn { background: var(--m-bg2); border-right: 1px solid var(--m-line); padding: 10px 8px; display: grid; gap: 2px; align-content: start; }
+  .settings .sn div { padding: 7px 10px; border-radius: 7px; color: var(--m-dim); font-size: 12.5px; }
+  .settings .sn div.on { background: var(--m-bg4); color: var(--m-fg); font-weight: 600; }
+  .settings .sb { padding: 16px 20px; display: grid; gap: 14px; align-content: start; }
+  .settings .sb h3 { font-family: var(--display); font-size: 17px; color: var(--m-fg); }
+  .settings .sb .desc { color: var(--m-dim); font-size: 12px; max-width: 60ch; }
+  .fld { display: grid; gap: 4px; }
+  .fld2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .preset { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .preset div { border: 1px solid var(--m-line); border-radius: 8px; padding: 10px 12px; background: var(--m-bg2); }
+  .preset div.on { border-color: var(--m-accent); background: #16213a; }
+  .preset b { display: block; font-size: 13px; } .preset small { color: var(--m-dim); display: block; font-size: 11px; line-height: 1.4; }
+  .acc { border: 1px solid var(--m-line); border-radius: 8px; padding: 8px 12px; color: var(--m-dim); font-size: 12px; }
+  .engrow { display: grid; grid-template-columns: 20px 1fr auto; gap: 10px; align-items: center; padding: 9px 10px; border: 1px solid var(--m-line); border-radius: 8px; background: var(--m-bg2); }
+  .engrow b { font-weight: 600; } .engrow small { display: block; color: var(--m-dim); font-family: var(--mono); font-size: 10.5px; }
+  .engrow .act { display: flex; gap: 6px; }
+  .live { background: #000; border-radius: 8px; height: 90px; position: relative; overflow: hidden; }
+  .live .cue { position: absolute; left: 6%; right: 6%; bottom: 10px; text-align: center; direction: rtl; font-family: var(--hebrew); font-weight: 600; color: #fff; font-size: 18px; text-shadow: 0 0 3px #000, 0 2px 3px #000; }
+
+  /* menus screen */
+  .menubar { background: var(--m-bg2); border-bottom: 1px solid var(--m-line); padding: 0 12px; display: flex; gap: 2px; align-items: center; height: 30px; font-size: 12.5px; }
+  .menubar span { padding: 3px 9px; border-radius: 5px; } .menubar span.on { background: var(--m-accent); color: #fff; } .menubar span.app { font-weight: 700; }
+  .menus { display: flex; gap: 14px; flex-wrap: wrap; padding: 14px; align-items: flex-start; }
+
+  /* dialogs */
+  .dlg-wrap { padding: 30px; display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; align-items: flex-start; }
+  .dlg { background: var(--m-bg2); border: 1px solid var(--m-line); border-radius: 12px; width: 400px; max-width: 100%; box-shadow: 0 30px 60px rgba(0,0,0,.5); overflow: hidden; }
+  .dlg .dh { padding: 14px 16px 4px; font-weight: 700; font-size: 14px; }
+  .dlg .db { padding: 6px 16px 14px; color: var(--m-dim); font-size: 12.5px; display: grid; gap: 10px; }
+  .dlg .opt { border: 1px solid var(--m-line); border-radius: 8px; padding: 9px 12px; color: var(--m-fg); display: grid; gap: 2px; }
+  .dlg .opt.rec { border-color: var(--m-accent); }
+  .dlg .opt small { color: var(--m-dim); font-size: 11px; }
+  .dlg .df { display: flex; gap: 8px; justify-content: flex-end; padding: 10px 16px; border-top: 1px solid var(--m-line); }
+
+  /* features */
+  .prio { display: grid; gap: 10px; }
+  .feat { display: grid; grid-template-columns: 74px 1fr 88px; gap: 12px; align-items: start; background: var(--panel); border: 1px solid var(--line); border-radius: 9px; padding: 12px 14px; }
+  .feat .tier { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 4px 6px; border-radius: 5px; text-align: center; }
+  .feat .tier.must { background: var(--crit-bg); color: var(--crit); } .feat .tier.should { background: var(--high-bg); color: var(--high); } .feat .tier.later { background: var(--low-bg); color: var(--low); }
+  .feat b { display: block; } .feat .eff { font-size: 12px; color: var(--ink-3); text-align: right; font-family: var(--mono); }
+  .feat .eff b { display: inline; color: var(--ink-2); font-family: var(--body); }
+  .acr { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  .acr .col { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .acr .col h3 { margin-bottom: 8px; display: flex; gap: 8px; align-items: center; }
+  .acr .col h3 span { font-size: 11px; padding: 2px 7px; border-radius: 5px; }
+  .acr ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14px; }
+  .acr li b { font-weight: 600; }
+
+  /* decisions */
+  .dec { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; display: grid; gap: 10px; }
+  .dec .dq { display: grid; grid-template-columns: 44px 1fr; gap: 10px; align-items: baseline; }
+  .dec .dq .id { font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
+  .dec .dq h3 { font-size: 16px; }
+  .dec .opts { display: grid; gap: 6px; padding-left: 54px; }
+  .dec .opt { display: grid; grid-template-columns: 18px 1fr; gap: 8px; font-size: 14px; padding: 8px 10px; border-radius: 7px; border: 1px solid var(--line-2); }
+  .dec .opt::before { content: ''; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--line); margin-top: 4px; }
+  .dec .opt.rec { border-color: var(--accent); background: var(--accent-soft); }
+  .dec .opt.rec::before { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 2px var(--accent-soft); }
+  .dec .opt small { display: block; color: var(--ink-2); }
+  .dec .why { padding-left: 54px; font-size: 13px; color: var(--ink-2); }
+  .dec .why b { color: var(--accent); }
+
+ .dec .opt.chosen { border-color: var(--ok); background: var(--ok-bg); }
+  .dec .opt.chosen::before { border-color: var(--ok); background: var(--ok); box-shadow: inset 0 0 0 2px var(--ok-bg); }
+  .dec .opt.rec.chosen { border-color: var(--ok); background: var(--ok-bg); }
+  .dec .decided { padding-left: 54px; font-size: 14px; display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: baseline; }
+  .dec .decided .tag { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--ok); background: var(--ok-bg); padding: 3px 7px; border-radius: 5px; }
+  .m-chip.online { color: #8fd3ff; border-color: #1f3a4a; }
+  .phases { display: grid; gap: 12px; }
+  .phase { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; display: grid; grid-template-columns: 120px 1fr; gap: 14px; }
+  .phase .ph { display: grid; gap: 4px; align-content: start; }
+  .phase .ph b { font-family: var(--display); font-size: 17px; }
+  .phase .ph small { color: var(--ink-3); font-family: var(--mono); font-size: 11px; }
+  .phase ul { margin: 0; padding-left: 18px; display: grid; gap: 5px; font-size: 14px; }
+  .phase .gate { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); font-size: 13px; color: var(--ink-2); }
+  .phase .gate b { color: var(--high); }
+ .mdl { font-family: var(--mono); font-size: 11px; font-weight: 500; padding: 2px 7px; border-radius: 5px; white-space: nowrap; display: inline-block; }
+  .mdl.fable { background: #f3e3f7; color: #7b2d8e; }
+  .mdl.opus { background: var(--accent-soft); color: var(--accent); }
+  .mdl.sonnet { background: var(--ok-bg); color: var(--ok); }
+  .mdl.haiku { background: var(--low-bg); color: var(--low); }
+  .mdl.oai { background: #e4f0ea; color: #1d6b4a; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .mdl.oai { background: #15342a; color: #6fd9a8; } }
+  :root[data-theme="dark"] .mdl.oai { background: #15342a; color: #6fd9a8; }
+  .files { display: grid; gap: 8px; }
+  .files .f { display: grid; grid-template-columns: 230px 1fr; gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; font-size: 14px; }
+  .files .f code { background: none; border: 0; padding: 0; color: var(--accent); font-size: 12.5px; }
+  .promptbox { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .promptbox .pbh { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--panel-2); font-size: 13px; font-weight: 600; }
+  .promptbox .pbh .sp { flex: 1; }
+  .promptbox button { font: inherit; font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink-2); cursor: pointer; }
+  .promptbox button:hover { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+  .promptbox pre { margin: 0; padding: 14px; overflow-x: auto; font-family: var(--mono); font-size: 12px; line-height: 1.6; color: var(--ink); max-height: 420px; overflow-y: auto; white-space: pre-wrap; }
+  .dag { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  .dag pre { margin: 0; font-family: var(--mono); font-size: 12px; line-height: 1.55; color: var(--ink-2); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .mdl.fable { background: #3a1f42; color: #e2a8f0; } }
+  :root[data-theme="dark"] .mdl.fable { background: #3a1f42; color: #e2a8f0; }
+  @media (max-width: 900px) {
+    .shell { grid-template-columns: 1fr; }
+    nav.rail { position: static; height: auto; flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--line); }
+    nav.rail .brand, nav.rail .foot { width: 100%; }
+    main { padding: 24px 18px 80px; }
+    .flow { grid-template-columns: 1fr; }
+    .finding { grid-template-columns: 1fr; }
+    .lib { grid-template-columns: 1fr; } .lib .side { display: none; }
+    .cw { grid-template-columns: repeat(2, 1fr); }
+    .player.with-panel { grid-template-columns: 1fr; }
+    .panel { grid-column: 1; grid-row: auto; border-left: 0; border-top: 1px solid var(--m-line); }
+    .settings { grid-template-columns: 1fr; } .settings .sn { display: flex; flex-wrap: wrap; }
+    .feat { grid-template-columns: 74px 1fr; } .feat .eff { text-align: left; grid-column: 2; }
+    .dec .opts, .dec .why, .dec .decided { padding-left: 0; }
+    .phase { grid-template-columns: 1fr; }
+  }
+</style>
+
+<div class="shell">
+<nav class="rail" id="rail">
+  <div class="brand">AI Subs Player<small>UX / UI review · Sept 2026 · repo: VideoPlayerAutoSubs</small></div>
+  <a href="#summary">Summary</a>
+  <a href="#audit">Audit <span class="n">22</span></a>
+  <a href="#flow">New user flow <span class="n">7</span></a>
+  <a href="#system">UI system</a>
+  <a href="#screens">Screens &amp; menus <span class="n">7</span></a>
+  <a href="#features">Must-have features</a>
+  <a href="#backlog">Add / change / remove</a>
+  <a href="#decisions">Decisions <span class="n">14</span></a>
+  <a href="#plan">Plan <span class="n">4</span></a>
+  <a href="#models">Models &amp; prompt</a>
+  <a href="#codex">Codex port</a>
+  <div class="foot">Based on a read of <code>VideoPlayerAutoSubs/src</code> and <code>electron/</code> at commit <code>da93aea</code>. Mockups are proposals, not screenshots.</div>
+</nav>
+
+<main>
+
+<!-- ============ SUMMARY ============ -->
+<section class="sec" id="summary">
+  <div class="hero">
+    <span class="eyebrow">UX / UI expert pass · AI Subs Player (VideoPlayerAutoSubs) · decisions recorded</span>
+    <h1>The engine is ahead of the product. Let the player play first, and make the translation a quiet passenger.</h1>
+    <p class="lede">The translation pipeline (Context Bible, JIT runway, express lane, disk cache) is genuinely better than what most subtitle tools do. The UI, though, is still an engineer's console: opening a video blocks on network and model work, panels hide the video, every path is a text field, and there is no keyboard, fullscreen, volume or export. The fixes below are mostly flow and structure, not new engine work.</p>
+    <div class="verdict">
+      <div class="tile"><div class="k">Findings</div><div class="v num">22<small>4 critical</small></div></div>
+      <div class="tile"><div class="k">Screens proposed</div><div class="v num">7</div></div>
+      <div class="tile"><div class="k">Must-have features</div><div class="v num">12</div></div>
+      <div class="tile"><div class="k">Decisions made</div><div class="v num">14<small>5 Sept</small></div></div>
+    </div>
+  </div>
+
+  <div class="stack" style="margin-top: 28px">
+    <h4>Five moves that change the experience most</h4>
+    <div class="moves">
+      <div class="mv"><div><b>Play immediately, prepare in the background.</b> mpv can show the first frame in under a second. Today the user waits for subtitle resolution, Ollama startup, TMDB, Wikidata and an LLM pass before anything appears. Show the video with source subtitles while the Bible builds, then swap in Hebrew as the runway fills.</div></div>
+      <div class="mv"><div><b>One status vocabulary everywhere.</b> Library chips, the stage pill, the transport bar and the background queue each invent their own words (100%, ready, context…, ASR 40%, queued, "% translated"). Replace with six states: Instant, Ready, Preparing, Transcribing, Translating, Needs attention.</div></div>
+      <div class="mv"><div><b>Panels dock beside the video, never over it.</b> Settings and the Bible currently hide mpv entirely. A right-hand panel that shrinks the stage keeps the picture visible, which also makes live subtitle editing possible.</div></div>
+      <div class="mv"><div><b>A real player surface.</b> Keyboard shortcuts, fullscreen, volume, audio track, subtitle mode (Hebrew / both / source / off), subtitle delay, ±10 s. These are table stakes; their absence makes the app feel like a demo.</div></div>
+      <div class="mv"><div><b>First-run health check with fixes, not defaults pointing at one external drive.</b> Detect mpv, ffmpeg, Ollama, the model, Whisper and the cache folder; offer a one-click fix for each. Nobody should learn about a missing binary from a failed video open.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ AUDIT ============ -->
+<section class="sec" id="audit">
+  <div class="sec-head">
+    <span class="eyebrow">1 · Audit</span>
+    <h2>What gets in the user's way today</h2>
+    <p>Severity is about impact on a person trying to watch a film, not code quality. Each finding points at the code that causes it and names the fix that the later sections assume.</p>
+  </div>
+  <div class="filters" id="sevFilters">
+    <button aria-pressed="true" data-sev="all">All</button>
+    <button aria-pressed="false" data-sev="crit">Critical</button>
+    <button aria-pressed="false" data-sev="high">High</button>
+    <button aria-pressed="false" data-sev="med">Medium</button>
+    <button aria-pressed="false" data-sev="low">Low</button>
+    <span class="cnt" id="sevCount"></span>
+  </div>
+  <div class="stack" id="findings">
+
+    <div class="finding" data-sev="crit"><span class="sev crit">Critical</span><div>
+      <h3>Opening a video blocks playback on the whole preparation pipeline</h3>
+      <div class="where">electron/session.ts:66-190 · electron/ipc.ts:171-201</div>
+      <p><code>PlayerSession.open</code> resolves subtitles, possibly runs Whisper, starts Ollama, calls TMDB and Wikidata, runs an LLM bible pass and opens the cache before <code>player.load()</code> is ever called. The user sees "Opening…" for 10–60 s (minutes with Whisper) even though mpv could be playing the file at once. For a player, time-to-first-frame is the single most important metric.</p>
+      <div class="fix"><div>Split <code>open</code> into <em>load</em> (hash + mpv load, under a second) and <em>prepare</em> (everything else, async, cancellable). Show source subtitles or none until the runway is ready, then hot-swap the ASS track. The stage shows a small "Preparing subtitles" pill with the current step, not a full-screen wait.</div></div>
+    </div></div>
+
+    <div class="finding" data-sev="crit"><span class="sev crit">Critical</span><div>
+      <h3>Whisper transcription starts on its own with no consent, no estimate and no way out</h3>
+      <div class="where">electron/session.ts:82-93</div>
+      <p>If a file has no subtitles the app silently begins a large-v3-turbo transcription on the whole file. That can take many minutes, pins the GPU, and the only feedback is a percentage in the empty stage. The user cannot decline, cannot watch meanwhile, and cannot pick a subtitle file they already have.</p>
+      <div class="fix"><div>A dialog with an estimate ("about 9 min for 42:10 with large-v3-turbo"), three choices: Transcribe now, Play without subtitles, Choose a subtitle file. Transcription runs in the background queue; playback starts immediately either way.</div></div>
+    </div></div>
+
+    <div class="finding" data-sev="crit"><span class="sev crit">Critical</span><div>
+      <h3>Opening Settings or the Bible makes the video disappear</h3>
+      <div class="where">src/App.tsx:69-72 · electron/ipc.ts:246</div>
+      <p><code>setStageVisible(false)</code> drops mpv's on-top flag so the app window covers it. From the user's side the film vanishes and keeps playing invisibly. You cannot correct a name while looking at the scene it is wrong in.</p>
+      <div class="fix"><div>Replace both modals with a docked right panel that shrinks the stage (the geometry reporting in <code>MpvStage</code> already handles resize). Settings gets its own window or a docked panel too. Nothing ever overlays the picture until the app is single-window.</div></div>
+    </div></div>
+
+    <div class="finding" data-sev="crit"><span class="sev crit">Critical</span><div>
+      <h3>No first run. Defaults hardcode one external drive; failures surface only on open</h3>
+      <div class="where">electron/engine/types.ts:153-179 · electron/ipc.ts:79</div>
+      <p>Models, Whisper, cache and the binary paths default to <code>/Volumes/EP2TB/StoryBookProject/…</code>. Ollama status is a nine-pixel dot. mpv missing is reported after the user clicked a film. Nothing tells the user what is installed, what is missing, or how to fix it.</p>
+      <div class="fix"><div>A setup screen that runs on first launch and from Help → Check setup: detect mpv, ffmpeg/ffprobe, Ollama, the default model (offer the pull, which <code>ollamaPull</code> and the progress event already support), Whisper (optional), TMDB key (optional), storage folder. Each row has a status and a fix button. Defaults become the app's own support folder; the external drive is a choice the user makes with a folder picker.</div></div>
+    </div></div>
+
+    <div class="finding" data-sev="high"><span class="sev high">High</span><div>
+      <h3>No keyboard control at all</h3>
+      <div class="where">electron/player/mpv.ts:66 (<code>--no-input-default-bindings</code>) · src/ (no key handlers)</div>
+      <p>mpv's default bindings are disabled on purpose (correct, the renderer should own input) but the renderer never registers any. Space does nothing. Arrow keys do nothing. Escape does nothing. Every player the user has ever used trained them otherwise.</p>
+      <div class="fix"><div>One keymap owned by the renderer, forwarded to mpv over IPC. See the keyboard table in the UI system section.</div></div>
+    </div></div>
+
+    <div class="finding" data-sev="high"><span class="sev high">High</span><div>
+      <h3>Missing fullscreen, volume, audio track and subtitle mode</h3>
+      <div class="where">src/player/TransportBar.tsx · electron/api-contract.ts:58-63</div>
+      <p>The transport offers play/pause, a scrubber, and a speed select. mpv exposes <code>fullscreen</code>, <code>volume</code>, <code>mute</code>, <code>aid</code>, <code>sid</code>, <code>sub-delay</code> and <code>sub-visibility</code>; none are wired. A film with an English and a commentary track cannot be switched. Subtitles cannot be turned off.</p>
+      <div class="fix"><div>Extend the contract with <code>setVolume</code>, <code>setMute</code>, <code>setFullscreen</code>, <code>setAudioTrack</code>, <code>setSubMode</code>, <code>setSubDelay</code>, plus a <code>tracks</code> query on load. Surface them in the transport and in a Subtitles menu.</div></div>
+    </div></div>
+
+    <div class="finding" data-sev="high"><span class="sev high">High</span><div>
+      <h3>Only "open a folder"; no single file, no drag and drop, no recents</h3>
+      <div class="where">src/library/LibraryPanel.tsx:54-57 · electron/ipc.ts:161-166</div>
+      <p>The most common desktop action, double-click a file or drop it on the window, is impossible. Library state is also lost on relaunch: the folder must be picked again every time.</p>
+      <div class="fix"><div>File → Open File (⌘O) and Open Folder (⇧⌘O), drop target on the whole window, persisted library folders, Continue watching, Open Recent, and registering the app as a handler for video extensions.</div></div>
+    </div></div>
+
+    <div class="finding" data-sev="high"><span class="sev high">High</span><div>
+      <h3>The translated subtitles can never leave the app</h3>
+      <div class="where">electron/scheduler/cache.ts · electron/player/ass.ts</div>
+      <p>After a 100% pre-translation the Hebrew lines live only in the cache JSON and a temporary ASS file. The sibling Ivrit Subs app exists precisely to write <code>movie.he.srt</code>; this app has the same data and no export.</p>
+      <div class="fix"><div>File → Export Subtitles (SRT / VTT / ASS), a context-menu action on library rows, and an optional setting "write a sidecar .he.srt next to the video when a title reaches 100%".</div></div>
+    </div></div>
+
+    <div class="finding" data-sev="high"><span class="sev high">High</span><div>
+      <h3>Correcting one character throws away the whole translation cache</h3>
+      <div class="where">electron/bible.ts:26-28 · electron/scheduler/cache.ts:44-70 · src/panels/BibleInspector.tsx:86</div>
+      <p>The cache header stores <code>bibleHash</code>; on mismatch <code>TranslationCache.open</code> starts fresh. So fixing "Sarah → female" after a full pre-translation discards every line, silently, on next open. The inspector's tooltip "Saved for the next time this title is opened" hides this. The README lists live re-translation as a planned enhancement; the cache design makes it urgent.</p>
+      <div class="fix"><div>Keep the cache; store the bible hash per cue instead of per file. On save, re-translate only cues whose text mentions the changed character or term (aliases included), live, with a panel footer showing "Re-translating 12 lines…".</div></div>
+    </div></div>
+
+    <div class="finding" data-sev="high"><span class="sev high">High</span><div>
+      <h3>Paths are free-text inputs with no picker, validation or test</h3>
+      <div class="where">src/panels/SettingsPanel.tsx:134-199</div>
+      <p>Whisper binary, models dir, mpv binary, cache root, models dir: five path fields the user has to type. A typo is discovered when a video fails to open. The "Ollama host" field accepts anything.</p>
+      <div class="fix"><div>Every path gets a Browse button (Electron's open dialog), a detected-or-not indicator, and where meaningful a Test button (mpv --version, whisper-cli -h, Ollama ping). Ollama's host and managed-server toggle belong on an Engines page with a live status row.</div></div>
+    </div></div>
+
+    <div class="finding" data-sev="high"><span class="sev high">High</span><div>
+      <h3>Three vocabularies for one thing, and "Bible" is engine jargon</h3>
+      <div class="where">src/library/LibraryPanel.tsx:16-35 · src/player/TransportBar.tsx:76 · src/App.tsx:130</div>
+      <p>The same title can read "100%", "ready", "context…", "ASR 40%", "queued" and "43% translated" depending on which surface you look at. The top bar says "Bible (7)", which means nothing to a viewer. "JIT", "ASR", "coverage" and "lookahead" also leak into labels.</p>
+      <div class="fix"><div>Six user-facing states (Instant · Ready · Preparing · Transcribing · Translating · Needs attention) rendered by one <code>StatusChip</code> component fed by one merged status per path. Rename Bible → "Cast &amp; terms", coverage → "translated", ASR → "transcribing", lookahead → "translate ahead".</div></div>
+    </div></div>
+
+    <div class="finding" data-sev="high"><span class="sev high">High</span><div>
+      <h3>Settings mix viewer choices with engine tuning on one screen</h3>
+      <div class="where">src/panels/SettingsPanel.tsx</div>
+      <p>Target language sits next to concurrency and batch size; subtitle size next to hwdec. Seven of the twenty-one fields in <code>AppSettings</code> (numCtx, temperature, recentPairs, contextWindow, behindKeepMs, numParallel, manageServer) are not exposed at all, while the ones that are exposed have no explanation of consequences.</p>
+      <div class="fix"><div>Pages: General, Subtitles, Translation, Engines, Metadata, Storage, Advanced. Translation gets a Fast / Balanced / Quality preset that sets model, batch size, concurrency and context together; the raw knobs live under Advanced with one-line consequences ("Larger batches: fewer requests, slower first line").</div></div>
+    </div></div>
+
+    <div class="finding" data-sev="med"><span class="sev med">Medium</span><div>
+      <h3>No resume position, no watched state</h3>
+      <div class="where">electron/ipc.ts:187-197 (lastPosMs reset to 0)</div>
+      <p>Closing and reopening an episode starts from zero. The translation cache remembers everything; the player remembers nothing.</p>
+      <div class="fix"><div>Persist position per video hash on pause/close/every 10 s. Library shows a progress bar on the row and a "Continue watching" strip. Auto-advance to the next episode at the end of a series file.</div></div>
+    </div></div>
+
+    <div class="finding" data-sev="med"><span class="sev med">Medium</span><div>
+      <h3>Errors are one-word chips or a red string in the stage</h3>
+      <div class="where">src/App.tsx:101-106, 151 · src/library/LibraryPanel.tsx:20</div>
+      <p>"error" on a library row has no detail and no action. mpv start failure is a sentence in the stage. TMDB failures (bad key, offline) are invisible: the bible quietly gets confidence "low".</p>
+      <div class="fix"><div>The "Needs attention" state opens a small popover with the message and an action (Open setup, Retry, Choose subtitle file). Non-fatal degradations (no TMDB) show once as a toast and once in the Cast &amp; terms panel header.</div></div>
+    </div></div>
+
+    <div class="finding" data-sev="med"><span class="sev med">Medium</span><div>
+      <h3>Scrubber shows runway but there is no legend and no seek preview</h3>
+      <div class="where">src/player/TransportBar.tsx:53-59</div>
+      <p>The faint blue "ahead" segment is the app's most interesting idea and nobody can tell what it means. Cached regions elsewhere in the file are not shown, so the user cannot see where seeking will be instant.</p>
+      <div class="fix"><div>Three-tone bar: played, translated (any cached region), not yet translated. A timecode tooltip on hover. The transport's "43% translated" moves into the Subtitles menu; the bar itself is the indicator.</div></div>
+    </div></div>
+
+    <div class="finding" data-sev="med"><span class="sev med">Medium</span><div>
+      <h3>No subtitle delay, and style changes require a reopen</h3>
+      <div class="where">electron/player/sub-feeder.ts:46-52 · src/panels/SettingsPanel.tsx:161-176</div>
+      <p>Sidecar and Whisper subtitles are frequently off by a few hundred milliseconds. mpv has <code>sub-delay</code>. Font size and outline are numbers in a modal with no preview and take effect only on the next session.</p>
+      <div class="fix"><div>Subtitles menu: delay −/+ 100 ms (<kbd>,</kbd> <kbd>.</kbd>), size −/+, position. Settings → Subtitles shows a live preview strip and pushes <code>sub-font-size</code>/<code>sub-border-size</code> to mpv immediately.</div></div>
+    </div></div>
+
+    <div class="finding" data-sev="med"><span class="sev med">Medium</span><div>
+      <h3>Pre-translation is all-or-nothing and un-orderable</h3>
+      <div class="where">src/App.tsx:87-90 · electron/background.ts:48-60</div>
+      <p>"Pre-translate library" enqueues every file. You cannot queue one season, cancel one item, or move tonight's episode to the front. The "Translate all" button in the top bar duplicates this for the open file.</p>
+      <div class="fix"><div>Per-row and per-title context menu: Translate now, Move to front, Remove from queue. A Queue view (small panel or the sidebar footer) lists what is running and what is next, with an estimate.</div></div>
+    </div></div>
+
+    <div class="finding" data-sev="med"><span class="sev med">Medium</span><div>
+      <h3>The library sidebar cannot be hidden while watching</h3>
+      <div class="where">src/index.css:74-77</div>
+      <p>A fixed 300 px column stays beside the film. In a 1200 px window that is a quarter of the width lost to a list you are not using.</p>
+      <div class="fix"><div>Sidebar toggles with <kbd>⌘1</kbd> and collapses automatically in fullscreen and after 5 s of playback if the user chose "auto-hide library while playing".</div></div>
+    </div></div>
+
+    <div class="finding" data-sev="med"><span class="sev med">Medium</span><div>
+      <h3>No completion notification, and the Mac can sleep mid-film</h3>
+      <div class="where">electron/background.ts · electron/main.ts</div>
+      <p>A 2-hour background pre-translation finishes silently. Electron does not stop the display from sleeping while mpv plays in a separate window.</p>
+      <div class="fix"><div><code>powerSaveBlocker.start('prevent-display-sleep')</code> while playing; a macOS notification "Season 2 is ready to watch" when the queue drains; the dock badge shows the number of running items.</div></div>
+    </div></div>
+
+    <div class="finding" data-sev="med"><span class="sev med">Medium</span><div>
+      <h3>Source language is assumed English; target is global only</h3>
+      <div class="where">electron/engine/media.ts:81 · electron/engine/types.ts:130</div>
+      <p>Embedded track selection prefers "eng"; Whisper is not told a language. A French film with French subs would be translated as if English. Changing target language is a global setting that invalidates every cache key.</p>
+      <div class="fix"><div>Detect the source language from the track tag or the first 50 cues, show it in the Subtitles menu, allow override. Target language: global default plus a per-title override in the same menu.</div></div>
+    </div></div>
+
+    <div class="finding" data-sev="low"><span class="sev low">Low</span><div>
+      <h3>Emoji as icons</h3>
+      <div class="where">src/App.tsx:139 · src/library/LibraryPanel.tsx:66 · src/player/TransportBar.tsx:69</div>
+      <p>⚙, ⚡, ⏸, ▶, ❚❚ render differently per OS and font, cannot be recoloured for states, and read as placeholder.</p>
+      <div class="fix"><div>One inline SVG icon set (Lucide is MIT, tree-shakable, and has every glyph the player needs).</div></div>
+    </div></div>
+
+    <div class="finding" data-sev="low"><span class="sev low">Low</span><div>
+      <h3>Product name and brand line</h3>
+      <div class="where">package.json:3 · src/library/LibraryPanel.tsx:50-53</div>
+      <p>"VideoPlayerAutoSubs — on-demand subtitle localization" describes the repo, not a product. It also takes 40 px of the sidebar permanently.</p>
+      <div class="fix"><div>Pick a name (decision D10). The sidebar header becomes the folder switcher; the name lives in the About box and the dock.</div></div>
+    </div></div>
+
+  </div>
+</section>
+
+<!-- ============ FLOW ============ -->
+<section class="sec" id="flow">
+  <div class="sec-head">
+    <span class="eyebrow">2 · New user flow</span>
+    <h2>From launch to Hebrew on screen in three clicks</h2>
+    <p>The principle: every long operation runs behind a playing video, and the app only interrupts when it needs a decision (no subtitles found) or a fix (something missing). Steps are in the order a first-time user meets them; returning users start at step 3.</p>
+  </div>
+
+  <div class="flow-diagram" aria-label="Flow diagram">
+    <svg viewBox="0 0 980 250" role="img">
+      <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--ink-3);stroke:none;marker:none"/></marker></defs>
+      <g>
+        <rect class="box" x="10" y="20" width="130" height="48" rx="8"/><text x="75" y="40" text-anchor="middle">Launch</text><text class="lbl" x="75" y="56" text-anchor="middle">first run → Setup</text>
+        <rect class="box" x="180" y="20" width="130" height="48" rx="8"/><text x="245" y="40" text-anchor="middle">Setup check</text><text class="lbl" x="245" y="56" text-anchor="middle">mpv · ffmpeg · Ollama · model</text>
+        <rect class="hot" x="350" y="20" width="150" height="48" rx="8"/><text x="425" y="40" text-anchor="middle">Library</text><text class="lbl" x="425" y="56" text-anchor="middle">folders · continue · search</text>
+        <rect class="hot" x="540" y="20" width="150" height="48" rx="8"/><text x="615" y="40" text-anchor="middle">Play at once</text><text class="lbl" x="615" y="56" text-anchor="middle">mpv first frame &lt; 1 s</text>
+        <rect class="hot" x="730" y="20" width="150" height="48" rx="8"/><text x="805" y="40" text-anchor="middle">Hebrew appears</text><text class="lbl" x="805" y="56" text-anchor="middle">runway swaps in</text>
+        <path d="M140,44 L178,44"/><path d="M310,44 L348,44"/><path d="M500,44 L538,44"/><path d="M690,44 L728,44"/>
+      </g>
+      <g>
+        <text class="lbl" x="540" y="108">behind the video, in order:</text>
+        <rect class="box" x="540" y="118" width="100" height="36" rx="6"/><text x="590" y="140" text-anchor="middle">Find subs</text>
+        <rect class="box" x="660" y="118" width="100" height="36" rx="6"/><text x="710" y="140" text-anchor="middle">Context</text>
+        <rect class="box" x="780" y="118" width="100" height="36" rx="6"/><text x="830" y="140" text-anchor="middle">Translate</text>
+        <path d="M615,68 L615,116"/><path d="M640,136 L658,136"/><path d="M760,136 L778,136"/><path d="M830,118 L830,70"/>
+        <rect class="box" x="540" y="184" width="220" height="44" rx="6"/><text x="650" y="202" text-anchor="middle">No subtitles found?</text><text class="lbl" x="650" y="218" text-anchor="middle">search online · transcribe (~9 min) · pick file · none</text>
+        <path d="M590,154 L590,182"/>
+        <rect class="box" x="350" y="118" width="150" height="36" rx="6"/><text x="425" y="140" text-anchor="middle">Background queue</text>
+        <path d="M425,68 L425,116"/><text class="lbl" x="350" y="176">pauses while you watch,</text><text class="lbl" x="350" y="190">notifies when done</text>
+      </g>
+    </svg>
+  </div>
+
+  <div class="flow">
+    <div class="steps" role="tablist" id="steps">
+      <button role="tab" aria-selected="true" data-step="1"><span class="i">01</span><span><b>First launch: setup check</b><small>only when something is missing</small></span></button>
+      <button role="tab" aria-selected="false" data-step="2"><span class="i">02</span><span><b>Add media</b><small>drop, open, or pick a folder</small></span></button>
+      <button role="tab" aria-selected="false" data-step="3"><span class="i">03</span><span><b>Library</b><small>continue watching, states at a glance</small></span></button>
+      <button role="tab" aria-selected="false" data-step="4"><span class="i">04</span><span><b>Open a title</b><small>video plays; subtitles prepare</small></span></button>
+      <button role="tab" aria-selected="false" data-step="5"><span class="i">05</span><span><b>No subtitles found</b><small>online search first, then the one decision we ask</small></span></button>
+      <button role="tab" aria-selected="false" data-step="6"><span class="i">06</span><span><b>Watching</b><small>runway, hover controls, quick fixes</small></span></button>
+      <button role="tab" aria-selected="false" data-step="7"><span class="i">07</span><span><b>Correct and export</b><small>cast panel, line edits, .srt</small></span></button>
+    </div>
+    <div>
+      <div class="step-body" data-step="1">
+        <div class="why"><b>Goal</b><p>The user never discovers a missing dependency by failing to open a film.</p><b>What happens</b><p>On first launch (or when a required check fails at launch) the Setup screen lists mpv, ffmpeg, Ollama, the translation model, Whisper, TMDB key and storage. Required rows block "Start watching"; optional rows do not. Each row has a fix: Locate…, Download (with progress), Paste key + Test, Choose folder. The Ollama row starts the managed server itself.</p><b>Exit</b><p>All required rows green → Library. Setup stays reachable from Help → Check setup.</p></div>
+      </div>
+      <div class="step-body" data-step="2" hidden>
+        <div class="why"><b>Goal</b><p>Getting a file in takes the same gesture as in any Mac app.</p><b>What happens</b><p>Drop a file or folder anywhere on the window. ⌘O opens a file; ⇧⌘O adds a folder. Folders persist and rescan on launch and on a "Rescan" action. A dropped single file plays immediately and is added to a "Loose files" group. The app registers as an "Open with" target for mkv/mp4/mov.</p><b>Exit</b><p>File → plays. Folder → Library.</p></div>
+      </div>
+      <div class="step-body" data-step="3" hidden>
+        <div class="why"><b>Goal</b><p>Decide what to watch in five seconds, and know whether it will be instant.</p><b>What happens</b><p>Continue watching strip on top (posters from the Bible metadata when available, progress bar). Below, titles grouped as series/movies with one chip per file: Instant (cached), Ready (subs found, will translate live), Needs transcription (no subs), Translating 43%, Needs attention. Search box filters. Right-click gives Translate now, Move to front, Export subtitles, Rebuild context, Reveal in Finder. The queue footer shows what is running with an estimate.</p><b>Exit</b><p>Double-click or Enter plays.</p></div>
+      </div>
+      <div class="step-body" data-step="4" hidden>
+        <div class="why"><b>Goal</b><p>First frame in under a second, every time.</p><b>What happens</b><p>mpv loads the file at once with the embedded/sidecar subtitle track selected (if any) so the user has <em>something</em> to read. A pill in the top-left of the stage shows the prep step: Finding subtitles → Building context (TMDB · Wikidata · reading dialogue) → Translating ahead. When the runway covers the playhead + 10 s, the translated ASS track replaces the source track with no interruption. If a cache exists, the swap is immediate and the pill never shows.</p><b>Exit</b><p>Pill disappears; scrub bar shows the translated region growing ahead.</p></div>
+      </div>
+      <div class="step-body" data-step="5" hidden>
+        <div class="why"><b>Goal</b><p>Never spend nine minutes of GPU without asking, and never leave the user stuck.</p><b>What happens</b><p>Video is already playing without subtitles. The app first queries OpenSubtitles (and Subdl as a second source) by file hash and by title. A dialog then offers, in order: Download what was found online (a hash-matched Hebrew file is preferred and becomes the default track; an English match becomes the translation source), Transcribe now (estimate from duration × the measured speed of this Mac, e.g. "about 9 min"), Choose a subtitle file, Play without subtitles. Transcription runs in the background queue; the pill shows progress; Hebrew appears when done. For series, one checkbox applies the choice to the whole season.</p><b>Decided (D3, D3b)</b><p>Ask each time with an estimate, with online search offered for every file, not only as a fallback. A hash-matched online Hebrew file wins over the app's own translation by default; the translation stays one click away in the Subtitles menu.</p><b>Exit</b><p>Back to step 4 with the new source.</p></div>
+      </div>
+      <div class="step-body" data-step="6" hidden>
+        <div class="why"><b>Goal</b><p>Feel like a real player; translation state is visible but never in the way.</p><b>What happens</b><p>Controls appear on hover / mouse move and hide after 2.5 s (below the stage until single-window, then overlaid). Space, arrows, F, M, ±10 s, volume, audio track, Subtitles menu (Hebrew / Hebrew + English / English / Off, delay, size), speed. The scrub bar shows played / translated / not yet translated. If the runway is about to run dry (rare, e.g. 2× speed on a cold file) a quiet pill says "Translating ahead…" and the source line shows in place of the missing Hebrew line rather than nothing.</p><b>Exit</b><p>End of file → next episode prompt (auto after 10 s if enabled).</p></div>
+      </div>
+      <div class="step-body" data-step="7" hidden>
+        <div class="why"><b>Goal</b><p>Fixing a wrong name or a bad line takes seconds and applies now, not next time.</p><b>What happens</b><p>The right panel has two tabs. <em>Subtitles</em>: the cue list synced to the playhead; click a row to seek; edit a Hebrew line inline; "Retranslate" with an optional hint ("she is speaking to a man"). <em>Cast &amp; terms</em>: names, Hebrew rendering, gender with its source (Wikidata / cast / model / you), terms; Save shows "Re-translating 12 affected lines" and the cache is kept. File → Export Subtitles writes <code>Title.he.srt</code>; an optional setting writes it automatically at 100%.</p><b>Exit</b><p>Edits persist in the Bible and cache for every future viewing.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ UI SYSTEM ============ -->
+<section class="sec" id="system">
+  <div class="sec-head">
+    <span class="eyebrow">3 · UI system</span>
+    <h2>One dark surface, one status vocabulary, one keymap</h2>
+    <p>A player lives next to a picture, so the chrome stays dark, low-contrast and quiet; colour is reserved for state. The existing palette in <code>index.css</code> is a good base and is kept. What changes is that every component below is defined once and reused on every screen.</p>
+  </div>
+
+  <div class="stack">
+    <h4>Colour roles</h4>
+    <div class="swatches">
+      <div class="sw"><div class="c" style="background:#0b0e14"></div><div class="t"><b>Ground</b><code>#0b0e14</code> stage chrome</div></div>
+      <div class="sw"><div class="c" style="background:#11151f"></div><div class="t"><b>Surface</b><code>#11151f</code> sidebar, panels</div></div>
+      <div class="sw"><div class="c" style="background:#171c28"></div><div class="t"><b>Raised</b><code>#171c28</code> controls, rows</div></div>
+      <div class="sw"><div class="c" style="background:#232a3a"></div><div class="t"><b>Line</b><code>#232a3a</code> only borders</div></div>
+      <div class="sw"><div class="c" style="background:#5b8cff"></div><div class="t"><b>Accent</b><code>#5b8cff</code> primary action, played, translated</div></div>
+      <div class="sw"><div class="c" style="background:#3fd07f"></div><div class="t"><b>Instant / done</b><code>#3fd07f</code></div></div>
+      <div class="sw"><div class="c" style="background:#ffb454"></div><div class="t"><b>Working / wait</b><code>#ffb454</code> transcribing</div></div>
+      <div class="sw"><div class="c" style="background:#ff6b6b"></div><div class="t"><b>Needs attention</b><code>#ff6b6b</code></div></div>
+    </div>
+    <p class="small muted">Rule: accent means "interactive or progress". Semantic colours mean state and are never used decoratively. Text on the stage uses white with a black outline, as libass renders it, so the app never invents a second subtitle style.</p>
+
+    <h4 style="margin-top:12px">Type and spacing</h4>
+    <div class="tbl"><table>
+      <tr><th>Role</th><th>Face</th><th>Size / weight</th><th>Where</th></tr>
+      <tr><td>UI text</td><td>System (SF Pro on macOS)</td><td>13 px / 400–600</td><td>everything in the chrome</td></tr>
+      <tr><td>Section titles</td><td>System</td><td>17 px / 700</td><td>settings pages, library headers</td></tr>
+      <tr><td>Timecodes, paths, model names</td><td>SF Mono / JetBrains Mono</td><td>11 px, tabular numbers</td><td>scrub tooltip, cue list, engines page</td></tr>
+      <tr><td>Hebrew cue text (on video)</td><td>libass default → Heebo or Arial Hebrew</td><td>user-set, default 42 on 720 ref</td><td>rendered by mpv, previewed in Settings → Subtitles</td></tr>
+      <tr><td>Hebrew in panels</td><td>Heebo / Arial Hebrew, <code>direction: rtl</code></td><td>13 px / 500</td><td>cue list, cast panel</td></tr>
+      <tr><td>Spacing</td><td colspan="3">4-pt grid. Rows 32 px, controls 28 px, icon buttons 30 px, panel padding 10 px, page padding 16–20 px. Radius: 6 px controls, 8 px rows and menus, 12 px dialogs.</td></tr>
+    </table></div>
+
+    <h4 style="margin-top:12px">Status vocabulary (the only one)</h4>
+    <div class="ctrl"><div class="demo">
+      <span class="m-chip instant">Instant</span>
+      <span class="m-chip ready">Ready</span>
+      <span class="m-chip busy">Preparing</span>
+      <span class="m-chip asr">Transcribing 40%</span>
+      <span class="m-chip busy">Translating 43%</span>
+      <span class="m-chip attn">Needs attention</span>
+      <span class="m-chip">Queued</span>
+    </div>
+    <div class="tbl"><table>
+      <tr><th>State</th><th>Meaning</th><th>Shown in</th></tr>
+      <tr><td>Instant</td><td>Translation fully cached; opening shows Hebrew immediately</td><td>library row, tooltip</td></tr>
+      <tr><td>Ready</td><td>Subtitles found; will translate live while you watch</td><td>library row</td></tr>
+      <tr><td>Preparing</td><td>Finding subtitles / building context for a title (short)</td><td>stage pill, library row</td></tr>
+      <tr><td>Transcribing NN%</td><td>Whisper running (long)</td><td>stage pill, library row, queue</td></tr>
+      <tr><td>Translating NN%</td><td>Background or "translate now" in progress</td><td>library row, queue</td></tr>
+      <tr><td>Needs attention</td><td>Something failed; click for message + action</td><td>library row, stage pill, setup</td></tr>
+      <tr><td>Queued</td><td>Waiting in the background queue</td><td>library row, queue</td></tr>
+    </table></div></div>
+
+    <h4 style="margin-top:12px">Controls inventory</h4>
+    <div class="ctrl-grid">
+      <div class="ctrl"><h3>Buttons</h3><div class="demo"><span class="m-btn pri">Start watching</span><span class="m-btn">Browse…</span><span class="m-btn ghost">Cancel</span><span class="m-btn danger">Clear cache</span><span class="m-btn sm">Test</span></div><p class="small muted">One primary per view. Ghost for dismiss. Danger only for destructive actions, always with a confirm that names what is deleted.</p></div>
+      <div class="ctrl"><h3>Segmented control</h3><div class="demo"><span class="m-seg"><span class="on">Hebrew</span><span>Both</span><span>English</span><span>Off</span></span> <span class="m-seg"><span>Fast</span><span class="on">Balanced</span><span>Quality</span></span></div><p class="small muted">For 2–4 mutually exclusive choices that the user switches often. Replaces the true/false <code>&lt;select&gt;</code>s in Settings.</p></div>
+      <div class="ctrl"><h3>Switch and select</h3><div class="demo"><span class="m-switch on"></span> Auto-hide library while playing &nbsp; <span class="m-input" style="width:180px">gemma3:4b <span class="arrow">▾</span></span></div><p class="small muted">Switch for on/off with immediate effect. Select for lists (models, languages, audio tracks).</p></div>
+      <div class="ctrl"><h3>Path field</h3><div class="demo" style="display:grid;grid-template-columns:1fr auto auto"><span class="m-input">/Applications/mpv.app/…/mpv <span class="m-chip instant nodot" style="margin-left:auto">found · 0.39</span></span><span class="m-btn">Browse…</span><span class="m-btn">Test</span></div><p class="small muted">Every path: picker, detection badge, test where possible. Never a bare text input.</p></div>
+      <div class="ctrl"><h3>Slider with value</h3><div class="demo"><span class="m-label" style="margin:0">Size</span><span class="m-slider" style="--v:55%"></span><span class="m-key">42</span></div><p class="small muted">Subtitle size, outline, volume. Value shown in the mono face; keyboard −/+ steps.</p></div>
+      <div class="ctrl"><h3>Stage pill and toast</h3><div class="demo"><span class="m-pill"><span class="spin"></span> Building context · Wikidata</span> <span class="m-toast"><span class="ok">✓</span> Season 2 ready to watch <span class="m-btn sm ghost">Open</span></span></div><p class="small muted">Pill: transient state on the stage, top-left, never centred over the picture. Toast: bottom-right, 5 s, one action max.</p></div>
+      <div class="ctrl"><h3>Docked panel</h3><div class="demo">Right side · 320 px · tabs (Subtitles / Cast &amp; terms / Info) · shrinks the stage · <span class="m-key">⌘2</span> / <span class="m-key">⌘3</span></div><p class="small muted">Replaces the drawer and the Settings modal during playback. Nothing overlays the video.</p></div>
+      <div class="ctrl"><h3>Dialog</h3><div class="demo">Centred · 400–480 px · title states the situation · options are cards, recommended first · <span class="m-key">esc</span> = safest option</div><p class="small muted">Used for decisions only (no subtitles found, delete cache, end of series). Never for settings.</p></div>
+    </div>
+
+    <h4 style="margin-top:12px">Keyboard map</h4>
+    <div class="tbl"><table class="keys">
+      <tr><th>Keys</th><th>Action</th><th>Keys</th><th>Action</th></tr>
+      <tr><td><kbd>space</kbd> <kbd>K</kbd></td><td>play / pause</td><td><kbd>F</kbd> <kbd>⌃⌘F</kbd></td><td>fullscreen</td></tr>
+      <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>seek ±5 s (shift: ±30 s)</td><td><kbd>esc</kbd></td><td>leave fullscreen / close panel</td></tr>
+      <tr><td><kbd>J</kbd> <kbd>L</kbd></td><td>seek ±10 s</td><td><kbd>M</kbd></td><td>mute</td></tr>
+      <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>volume ±5</td><td><kbd>S</kbd></td><td>cycle subtitle mode</td></tr>
+      <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>speed −/+ 0.25</td><td><kbd>,</kbd> <kbd>.</kbd></td><td>subtitle delay −/+ 100 ms</td></tr>
+      <tr><td><kbd>⌘O</kbd> <kbd>⇧⌘O</kbd></td><td>open file / add folder</td><td><kbd>⌘1</kbd> <kbd>⌘2</kbd> <kbd>⌘3</kbd></td><td>library / subtitles panel / cast panel</td></tr>
+      <tr><td><kbd>⌘E</kbd></td><td>export subtitles</td><td><kbd>⌘,</kbd></td><td>settings</td></tr>
+      <tr><td><kbd>N</kbd> <kbd>P</kbd></td><td>next / previous episode</td><td><kbd>⌘F</kbd></td><td>search library</td></tr>
+    </table></div>
+
+    <h4 style="margin-top:12px">Rules the whole app follows</h4>
+    <div class="rules">
+      <div class="r"><div>Nothing covers the picture. Panels dock, dialogs pause, toasts sit outside the stage.</div></div>
+      <div class="r"><div>Every operation longer than 2 s shows what step it is on, an estimate when one exists, and a way to cancel.</div></div>
+      <div class="r"><div>Every path is picked, detected and testable. Every failure names the fix.</div></div>
+      <div class="r"><div>Labels say what the viewer gets ("translate ahead: 50 s"), not what the engine does ("lookahead ms").</div></div>
+      <div class="r"><div>Defaults work on a fresh Mac with mpv and Ollama installed. The external drive is a choice, not an assumption.</div></div>
+      <div class="r"><div>Corrections apply now and are kept forever. No "next time you open this".</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SCREENS ============ -->
+<section class="sec" id="screens">
+  <div class="sec-head">
+    <span class="eyebrow">4 · Screens, menus, views</span>
+    <h2>The seven surfaces of the essential flow</h2>
+    <p>Mockups use the app's own dark skin. Numbered markers are explained under each screen. Some screens have state toggles so you can see the variants.</p>
+  </div>
+
+  <div class="tabs" role="tablist" id="screenTabs">
+    <button role="tab" aria-selected="true" data-screen="setup">Setup</button>
+    <button role="tab" aria-selected="false" data-screen="library">Library</button>
+    <button role="tab" aria-selected="false" data-screen="player">Player</button>
+    <button role="tab" aria-selected="false" data-screen="panels">Side panels</button>
+    <button role="tab" aria-selected="false" data-screen="settings">Settings</button>
+    <button role="tab" aria-selected="false" data-screen="menus">Menu bar</button>
+    <button role="tab" aria-selected="false" data-screen="dialogs">Dialogs</button>
+  </div>
+
+  <!-- SETUP -->
+  <div class="screen" data-screen="setup">
+    <div class="frame">
+      <div class="tb"><div class="lights"><i></i><i></i><i></i></div><span class="title">Setup</span></div>
+      <div class="setup">
+        <div><h2>Let's check what this Mac has</h2><div style="color:var(--m-dim);margin-top:4px">Three things are required to play and translate. The rest are optional and can be added later from Help → Check setup.</div></div>
+        <div class="check"><span class="st ok">✓</span><span><b>mpv</b><small>/Applications/mpv.app/Contents/MacOS/mpv · 0.39.0 · hardware decoding available</small></span><span class="act"><span class="m-btn sm">Change…</span></span></div>
+        <div class="check"><span class="st ok">✓</span><span><b>ffmpeg / ffprobe</b><small>/opt/homebrew/bin/ffmpeg · 7.1</small></span><span class="act"></span></div>
+        <div class="check"><span class="st busy"></span><span><b>Ollama</b><small>Starting the app's own server on port 11435…</small></span><span class="act"><span class="m-btn sm ghost">Use my own server</span></span></div>
+        <div class="check" style="position:relative"><span class="callout" style="left:-30px;top:12px">1</span><span class="st warn">!</span><span><b>Translation model · gemma3:4b</b><small>Not downloaded · 3.3 GB · needed for Hebrew subtitles</small><div class="pbar" style="--v:38%"><i></i></div><small>1.2 of 3.3 GB · about 2 min left</small></span><span class="act"><span class="m-btn sm ghost">Cancel</span></span></div>
+        <div class="check"><span class="st opt"></span><span><b>Whisper <span class="m-chip nodot" style="margin-left:6px">optional</span></b><small>For videos with no subtitles. whisper-cli not found.</small></span><span class="act"><span class="m-btn sm">Locate…</span><span class="m-btn sm ghost">How to install</span></span></div>
+        <div class="check"><span class="st opt"></span><span><b>TMDB key <span class="m-chip nodot" style="margin-left:6px">optional</span></b><small>Better names and genders from the film's cast list.</small></span><span class="act"><span class="m-btn sm">Paste key…</span></span></div>
+        <div class="check"><span class="st opt"></span><span><b>OpenSubtitles account <span class="m-chip nodot" style="margin-left:6px">optional</span></b><small>Finds ready-made Hebrew and English subtitles online. Works without an account with a small daily limit.</small></span><span class="act"><span class="m-btn sm">Sign in…</span></span></div>
+        <div class="check" style="position:relative"><span class="callout" style="left:-30px;top:12px">2</span><span class="st ok">✓</span><span><b>Storage</b><small>~/Library/Application Support/… · models 3.3 GB · cache 0 B</small></span><span class="act"><span class="m-btn sm">Choose folder…</span></span></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center;margin-top:6px"><span style="color:var(--m-dim);font-size:12px;margin-right:auto">2 of 3 required items ready</span><span class="m-btn ghost">Skip for now</span><span class="m-btn pri" style="opacity:.5">Start watching</span></div>
+      </div>
+    </div>
+    <div class="notes">
+      <div class="note"><i>1</i><span>Model download uses the existing <code>ollamaPull</code> + progress event. It is the only thing a fresh user actually has to wait for, so it gets the progress bar and the estimate.</span></div>
+      <div class="note"><i>2</i><span>Storage is one folder that holds models, Whisper models and the cache. "Choose folder…" is how the external drive comes in, with a size hint. Existing paths from settings.json are honoured.</span></div>
+      <div class="note"><i>·</i><span>Required rows gate the primary button. Optional rows never block; Whisper and TMDB show a one-line reason to care.</span></div>
+    </div>
+  </div>
+
+  <!-- LIBRARY -->
+  <div class="screen" data-screen="library" hidden>
+    <div class="frame">
+      <div class="tb"><div class="lights"><i></i><i></i><i></i></div><span class="title">Library</span><span class="sp"></span><span class="m-input" style="width:200px"><span class="ph">Search titles ⌘F</span></span><span class="m-btn ghost">⚙</span></div>
+      <div class="lib">
+        <div class="side">
+          <div class="h">Folders</div>
+          <div class="it on">Movies <span class="n">14</span></div>
+          <div class="it">TV <span class="n">61</span></div>
+          <div class="it">Loose files <span class="n">2</span></div>
+          <div class="it" style="color:var(--m-accent)">+ Add folder…</div>
+          <div class="h" style="margin-top:8px">Queue</div>
+          <div style="padding:4px 10px;font-size:11px;color:var(--m-dim)">Translating <b style="color:var(--m-fg)">Severance S02E03</b><div class="pbar" style="--v:43%"><i></i></div>43% · 4 min left · 5 queued</div>
+          <div style="padding:2px 10px"><span class="m-btn sm ghost">Pause</span></div>
+        </div>
+        <div class="body" style="position:relative">
+          <div class="hd"><h3>Continue watching</h3></div>
+          <div class="cw">
+            <div class="card"><div class="art"><span class="ply">▶</span><span class="pr" style="--v:62%"></span></div><div class="t"><b>Severance · S02E02</b><small>28 min left · Instant</small></div></div>
+            <div class="card"><div class="art b"><span class="ply">▶</span><span class="pr" style="--v:20%"></span></div><div class="t"><b>Heat (1995)</b><small>2 h 15 left · Instant</small></div></div>
+            <div class="card"><div class="art c"><span class="ply">▶</span><span class="pr" style="--v:88%"></span></div><div class="t"><b>The Bear · S03E10</b><small>4 min left</small></div></div>
+            <div class="card"><div class="art d"><span class="ply">▶</span><span class="pr" style="--v:5%"></span></div><div class="t"><b>Dune Part Two (2024)</b><small>Ready</small></div></div>
+          </div>
+          <div class="hd"><h3>Movies</h3><span class="m-chip nodot">14</span><span class="sp" style="flex:1"></span><span class="m-seg"><span class="on">Title</span><span>Added</span><span>Status</span></span></div>
+          <div class="rows">
+            <div class="row-h"><span>Title</span><span>Status</span><span>Subtitles</span><span>Length</span></div>
+            <div class="row"><span class="nm">Heat (1995)</span><span><span class="m-chip instant">Instant</span></span><span style="color:var(--m-dim);font-size:11px">embedded · en</span><span class="dur">2:50</span></div>
+            <div class="row on" style="position:relative"><span class="callout" style="right:-8px;top:-8px">1</span><span class="nm">Dune Part Two (2024)</span><span><span class="m-chip ready">Ready</span></span><span style="color:var(--m-dim);font-size:11px">sidecar · en</span><span class="dur">2:46</span></div>
+            <div class="row"><span class="nm">Perfect Days (2023)</span><span><span class="m-chip online">Hebrew online</span></span><span style="color:var(--m-dim);font-size:11px">none in file · he, en online (hash match)</span><span class="dur">2:04</span></div>
+            <div class="row"><span class="nm">Aftersun (2022)</span><span><span class="m-chip asr">Needs transcription</span></span><span style="color:var(--m-dim);font-size:11px">none found</span><span class="dur">1:42</span></div>
+            <div class="row"><span class="nm">Anatomy of a Fall (2023)</span><span><span class="m-chip attn">Needs attention</span></span><span style="color:var(--m-dim);font-size:11px">embedded · fr</span><span class="dur">2:31</span></div>
+            <div class="row grp"><span>Series · Severance</span><span></span><span></span><span></span></div>
+            <div class="row"><span class="nm">S02E01 <small>Hello, Ms. Cobel</small></span><span><span class="m-chip instant">Instant</span></span><span style="color:var(--m-dim);font-size:11px">embedded · en</span><span class="dur">0:58</span></div>
+            <div class="row"><span class="nm">S02E03 <small>Who Is Alive?</small></span><span><span class="m-chip busy">Translating 43%</span></span><span style="color:var(--m-dim);font-size:11px">embedded · en</span><span class="dur">0:52</span></div>
+            <div class="row"><span class="nm">S02E04 <small>Woe's Hollow</small></span><span><span class="m-chip">Queued</span></span><span style="color:var(--m-dim);font-size:11px">embedded · en</span><span class="dur">0:55</span></div>
+          </div>
+          <div class="m-menu ctx" style="left:200px;top:300px"><span class="callout" style="left:-28px;top:6px">2</span>
+            <div>Play <span class="k">↩</span></div><div>Play from start</div><hr>
+            <div>Translate now</div><div>Move to front of queue</div><div class="dis">Remove from queue</div><hr>
+            <div>Export subtitles… <span class="k">⌘E</span></div><div>Search online subtitles…</div><div>Choose subtitle file…</div><div>Rebuild context</div><hr>
+            <div>Reveal in Finder</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="notes">
+      <div class="note"><i>1</i><span>One row per file, one chip, plus what subtitles were found and in which language. "Ready" means it will translate live; "Instant" means it is cached; "Hebrew online" means a human-made file exists on OpenSubtitles and will be used by default (D3b). Progress from a previous viewing shows as a thin bar under the row (omitted here for clarity).</span></div>
+      <div class="note"><i>2</i><span>The context menu replaces both the "Pre-translate library" button and the top-bar "Translate all". The queue in the sidebar shows what is running and lets you pause; series get "Translate this season" at the group row.</span></div>
+      <div class="note"><i>·</i><span>Continue watching needs resume positions (finding M1). Poster art comes from the Bible's TMDB metadata; rows without it show a generated gradient, never a broken image. D5: a rows / poster-grid toggle is decided; the grid is planned as a second phase because it needs TMDB at scan time and a thumbnail cache.</span></div>
+    </div>
+  </div>
+
+  <!-- PLAYER -->
+  <div class="screen" data-screen="player" hidden>
+    <div class="toggles">
+      <span>Controls</span><span class="grp" data-toggle="controls"><button aria-pressed="true" data-v="on">Visible</button><button aria-pressed="false" data-v="off">Hidden (playing)</button></span>
+      <span>Subtitles</span><span class="grp" data-toggle="submode"><button aria-pressed="true" data-v="he">Hebrew</button><button aria-pressed="false" data-v="both">Both</button><button aria-pressed="false" data-v="off">Off</button></span>
+      <span>State</span><span class="grp" data-toggle="prep"><button aria-pressed="true" data-v="ready">Runway ready</button><button aria-pressed="false" data-v="prep">Preparing</button></span>
+    </div>
+    <div class="frame">
+      <div class="tb"><div class="lights"><i></i><i></i><i></i></div><span class="title">AI Subs Player · Dune Part Two (2024) · דיונה: חלק שני</span><span class="sp"></span><span class="m-btn ghost sm">Library ⌘1</span><span class="m-btn ghost sm">Subtitles ⌘2</span><span class="m-btn ghost sm">Cast ⌘3</span></div>
+      <div class="player" id="playerMock">
+        <div class="stage">
+          <div class="vid"></div>
+          <div class="top">
+            <span class="m-pill" id="prepPill" hidden><span class="spin"></span> Building context · reading dialogue 2/3</span>
+            <span class="m-pill" id="runwayPill" hidden>Translating ahead…</span>
+            <span class="sp"></span>
+          </div>
+          <span class="callout" style="left:12px;top:12px">1</span>
+          <div class="cue" id="cueMock">את בטוחה שזה הוא?<span class="src">Are you sure it's him?</span></div>
+          <div class="hover" id="hoverCtrls">
+            <span class="callout" style="right:12px;top:30px">2</span>
+            <div class="scrub">
+              <div class="t"></div>
+              <div class="cache" style="left:70%;width:12%"></div>
+              <div class="run" style="left:31%;width:9%"></div>
+              <div class="pl" style="width:31%"></div>
+              <div class="kn" style="left:31%"></div>
+              <div class="tip" style="left:52%">1:26:40</div>
+            </div>
+            <div class="ctrls">
+              <span class="ico">⏮</span><span class="ico">−10</span><span class="ico big">❚❚</span><span class="ico">+10</span><span class="ico">⏭</span>
+              <span class="time">51:32 / 2:46:10</span>
+              <span class="sp"></span>
+              <span class="vol"><span class="ico">🔊</span><span class="m-slider" style="--v:70%"></span></span>
+              <span class="m-btn sm">Audio · EN 5.1 ▾</span>
+              <span class="m-btn sm" id="subBtn">Subs · Hebrew ▾</span>
+              <span class="m-btn sm">1× ▾</span>
+              <span class="ico">⛶</span>
+            </div>
+          </div>
+        </div>
+        <div class="transport" id="transportBar">
+          <div class="legend"><span><i style="background:var(--m-accent)"></i>played</span><span><i style="background:rgba(91,140,255,.45)"></i>translated ahead</span><span><i style="background:#4a5470"></i>translated (cached)</span><span><i style="background:#333a4d"></i>not yet</span><span style="margin-left:auto">source: sidecar · en</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="notes">
+      <div class="note"><i>1</i><span>The only place the engine shows itself during playback: a pill top-left while preparing, and "Translating ahead…" only if the runway would run dry. When "Preparing" is on, the source English line is shown so the viewer is never staring at nothing.</span></div>
+      <div class="note"><i>2</i><span>Hover controls with a three-tone scrub bar, drawn over the video. D8 decided single-window first (libmpv render addon), so these controls are built once, on the picture. If the one-week spike fails, the same strip sits below the stage as today's transport does.</span></div>
+      <div class="note"><i>·</i><span>The title bar carries the localized title from TMDB when known. Panel toggles live there, not in a second toolbar. The legend in the footer is shown only on hover of the bar.</span></div>
+    </div>
+  </div>
+
+  <!-- PANELS -->
+  <div class="screen" data-screen="panels" hidden>
+    <div class="toggles"><span>Panel</span><span class="grp" data-toggle="panel"><button aria-pressed="true" data-v="subs">Subtitles</button><button aria-pressed="false" data-v="cast">Cast &amp; terms</button></span></div>
+    <div class="frame">
+      <div class="tb"><div class="lights"><i></i><i></i><i></i></div><span class="title">Dune Part Two (2024)</span><span class="sp"></span><span class="m-btn ghost sm">Library ⌘1</span><span class="m-btn sm">Subtitles ⌘2</span><span class="m-btn ghost sm">Cast ⌘3</span></div>
+      <div class="player with-panel">
+        <div class="stage" style="min-height:300px">
+          <div class="vid"></div>
+          <div class="cue" style="font-size:18px">אני לא אעזוב אותך, פול.</div>
+        </div>
+        <div class="transport">
+          <div class="scrub"><div class="t"></div><div class="run" style="left:44%;width:10%"></div><div class="pl" style="width:44%"></div><div class="kn" style="left:44%"></div></div>
+          <div class="ctrls"><span class="ico">−10</span><span class="ico big">❚❚</span><span class="ico">+10</span><span class="time">1:13:02 / 2:46:10</span><span class="sp"></span><span class="m-btn sm">Subs · Hebrew ▾</span><span class="ico">⛶</span></div>
+        </div>
+        <div class="panel" id="panelSubs">
+          <div class="ph"><b>Subtitles</b><span class="sp" style="flex:1"></span><span class="m-input" style="width:120px"><span class="ph">Find…</span></span><span class="m-btn ghost sm">✕</span></div>
+          <div class="ptabs"><span class="on">Lines</span><span>Cast &amp; terms</span><span>Info</span></div>
+          <div class="pbody">
+            <div class="cuerow"><span class="tc">1:12:41</span><span><span class="he">הם באים מהצפון.</span><span class="en">They're coming from the north.</span></span></div>
+            <div class="cuerow"><span class="tc">1:12:48</span><span><span class="he">כמה?</span><span class="en">How many?</span></span></div>
+            <div class="cuerow on" style="position:relative"><span class="callout" style="left:-6px;top:-6px">1</span><span class="tc">1:13:02</span><span><span class="he">אני לא אעזוב אותך, פול.</span><span class="en">I won't leave you, Paul.</span><span class="acts"><span class="m-btn sm">Edit</span><span class="m-btn sm">Retranslate…</span><span class="m-btn sm ghost">Copy</span></span></span></div>
+            <div class="cuerow"><span class="tc">1:13:09</span><span><span class="he">את חייבת. בשבילם.</span><span class="en">You must. For them.</span></span></div>
+            <div class="cuerow pend"><span class="tc">1:13:15</span><span><span class="he">translating…</span><span class="en">CHANI: Then go. Go and be their messiah.</span></span></div>
+            <div class="cuerow pend"><span class="tc">1:13:22</span><span><span class="he">translating…</span><span class="en">I'll never forgive you.</span></span></div>
+          </div>
+          <div class="pfoot"><span class="m-switch on"></span> Follow playback <span class="sp" style="flex:1"></span> 1,412 / 1,880 translated</div>
+        </div>
+        <div class="panel" id="panelCast" hidden>
+          <div class="ph"><b>Cast &amp; terms</b><span class="sp" style="flex:1"></span><span class="m-chip instant nodot">TMDB · Wikidata</span><span class="m-btn ghost sm">✕</span></div>
+          <div class="ptabs"><span>Lines</span><span class="on">Cast &amp; terms</span><span>Info</span></div>
+          <div class="pbody">
+            <div style="font-size:11px;color:var(--m-dim);padding:2px 4px 6px">Edit a name or gender. Only lines that mention it are re-translated, now.</div>
+            <div class="charrow"><span class="en">Paul Atreides<small>Timothée Chalamet</small></span><span class="he">פול אטרייאידס</span><span><span class="m-seg"><span class="on">♂</span><span>♀</span></span></span></div>
+            <div class="charrow" style="position:relative"><span class="callout" style="left:-8px;top:8px">2</span><span class="en">Chani<small>Zendaya · gender: <span style="color:var(--m-warn)">model guess</span></small></span><span class="he">צ'אני</span><span><span class="m-seg"><span>♂</span><span class="on">♀</span></span></span></div>
+            <div class="charrow"><span class="en">Lady Jessica<small>Rebecca Ferguson</small></span><span class="he">ליידי ג'סיקה</span><span><span class="m-seg"><span>♂</span><span class="on">♀</span></span></span></div>
+            <div class="charrow"><span class="en">Stilgar<small>Javier Bardem</small></span><span class="he">סטילגר</span><span><span class="m-seg"><span class="on">♂</span><span>♀</span></span></span></div>
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--m-faint);padding:10px 4px 4px">Terms</div>
+            <div class="charrow" style="grid-template-columns:1fr 1fr"><span class="en">the spice</span><span class="he">התבלין</span></div>
+            <div class="charrow" style="grid-template-columns:1fr 1fr"><span class="en">Fremen</span><span class="he">פרמנים</span></div>
+            <div class="charrow" style="grid-template-columns:1fr 1fr;border:0"><span class="en" style="color:var(--m-accent)">+ Add term</span><span></span></div>
+          </div>
+          <div class="pfoot"><span class="m-pill"><span class="spin"></span> Re-translating 12 lines</span><span class="sp" style="flex:1"></span><span class="m-btn sm pri">Save</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="notes">
+      <div class="note"><i>1</i><span>Lines panel follows the playhead; clicking a row seeks. Edit changes the cache entry and the ASS file at once. "Retranslate…" lets you add a hint ("Chani is talking to Paul") and re-runs the express lane for that cue.</span></div>
+      <div class="note"><i>2</i><span>Gender shows its source. Anything that came from the model rather than Wikidata is flagged amber, because that is where errors hide. Save re-translates affected lines only (finding H5 fix).</span></div>
+      <div class="note"><i>·</i><span>The panel shrinks the stage (mpv follows via the existing bounds reporting). The Info tab holds poster, synopsis, source subtitle track, model used and cache size.</span></div>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="screen" data-screen="settings" hidden>
+    <div class="toggles"><span>Page</span><span class="grp" data-toggle="spage"><button aria-pressed="true" data-v="translation">Translation</button><button aria-pressed="false" data-v="subtitles">Subtitles</button><button aria-pressed="false" data-v="engines">Engines</button></span></div>
+    <div class="frame">
+      <div class="tb"><div class="lights"><i></i><i></i><i></i></div><span class="title">Settings</span></div>
+      <div class="settings">
+        <div class="sn" id="settingsNav">
+          <div>General</div><div data-p="subtitles">Subtitles</div><div class="on" data-p="translation">Translation</div><div data-p="engines">Engines</div><div>Metadata</div><div>Storage</div><div>Advanced</div>
+        </div>
+        <div class="sb" id="sp-translation">
+          <div><h3>Translation</h3><div class="desc">Choose how much of your Mac to spend per line. Presets set the model, batch size and how far ahead we translate; Advanced exposes the individual knobs.</div></div>
+          <div class="preset">
+            <div><b>Fast</b><small>gemma3:4b · translate 30 s ahead<br>Never falls behind, even at 2×.</small></div>
+            <div class="on" style="position:relative"><span class="callout" style="right:-8px;top:-8px">1</span><b>Balanced</b><small>gemma3:4b · 50 s ahead · larger batches<br>Better continuity between lines.</small></div>
+            <div><b>Quality</b><small>gemma3:12b · pre-translate before playing<br>Best names and grammar; opening takes minutes.</small></div>
+          </div>
+          <div class="fld2">
+            <div class="fld"><span class="m-label">Target language</span><span class="m-input">Hebrew <span class="arrow">▾</span></span></div>
+            <div class="fld"><span class="m-label">Model</span><span class="m-input">gemma3:4b <span class="m-chip instant nodot" style="margin-left:auto">installed</span><span class="arrow">▾</span></span></div>
+          </div>
+          <div class="fld"><span style="display:flex;align-items:center;gap:8px"><span class="m-switch on"></span> Keep translating the rest of the file while paused or idle</span></div>
+          <div class="fld"><span style="display:flex;align-items:center;gap:8px"><span class="m-switch"></span> Re-translate finished titles with the Quality model when the Mac is idle</span></div>
+          <div class="acc">▸ Advanced · batch size 14 · concurrency 2 · context 3 lines · memory 6 pairs · temperature 0.2 · context window 8192</div>
+        </div>
+        <div class="sb" id="sp-subtitles" hidden>
+          <div><h3>Subtitles</h3><div class="desc">Changes apply to the open video immediately.</div></div>
+          <div class="live"><div class="cue">את בטוחה שזה הוא?</div></div>
+          <div class="fld2">
+            <div class="fld"><span class="m-label">Size</span><span style="display:flex;align-items:center;gap:8px"><span class="m-slider" style="--v:55%"></span><span class="m-key">42</span></span></div>
+            <div class="fld"><span class="m-label">Outline</span><span style="display:flex;align-items:center;gap:8px"><span class="m-slider" style="--v:30%"></span><span class="m-key">2</span></span></div>
+          </div>
+          <div class="fld2">
+            <div class="fld"><span class="m-label">Default mode</span><span class="m-seg"><span class="on">Hebrew</span><span>Hebrew + source</span></span></div>
+            <div class="fld"><span class="m-label">Font</span><span class="m-input">System Hebrew <span class="arrow">▾</span></span></div>
+          </div>
+          <div class="fld"><span style="display:flex;align-items:center;gap:8px"><span class="m-switch on"></span> Show the source line until its translation is ready</span></div>
+          <div class="fld"><span style="display:flex;align-items:center;gap:8px"><span class="m-switch"></span> Write a <span class="m-key">.he.srt</span> file next to the video when a title is fully translated</span></div>
+        </div>
+        <div class="sb" id="sp-engines" hidden>
+          <div><h3>Engines</h3><div class="desc">Everything the app runs on. Green means detected and tested.</div></div>
+          <div class="engrow"><span class="check"><span class="st ok" style="width:16px;height:16px">✓</span></span><span><b>mpv</b><small>/Applications/mpv.app/Contents/MacOS/mpv · 0.39.0 · videotoolbox</small></span><span class="act"><span class="m-btn sm">Browse…</span><span class="m-btn sm">Test</span></span></div>
+          <div class="engrow"><span class="check"><span class="st ok" style="width:16px;height:16px">✓</span></span><span><b>ffmpeg</b><small>/opt/homebrew/bin/ffmpeg · 7.1</small></span><span class="act"><span class="m-btn sm">Browse…</span></span></div>
+          <div class="engrow" style="position:relative"><span class="callout" style="left:-8px;top:10px">2</span><span class="check"><span class="st ok" style="width:16px;height:16px">✓</span></span><span><b>Ollama</b> <span class="m-chip instant nodot">running · managed · :11435</span><small>models in /Volumes/EP2TB/StoryBookProject/ollama-models · gemma3:4b, gemma3:12b, qwen2.5:7b-instruct</small></span><span class="act"><span class="m-btn sm">Models…</span><span class="m-btn sm ghost">Use external server</span></span></div>
+          <div class="engrow"><span class="check"><span class="st warn" style="width:16px;height:16px">!</span></span><span><b>Whisper</b><small>whisper-cli not found at /Volumes/EP2TB/StoryBookProject/whisper-bin/whisper-cli</small></span><span class="act"><span class="m-btn sm">Browse…</span><span class="m-btn sm ghost">Disable</span></span></div>
+          <div class="engrow"><span class="check"><span class="st ok" style="width:16px;height:16px">✓</span></span><span><b>Whisper model</b><small>ggml-large-v3-turbo.bin · 1.6 GB · measured 4.5× realtime on this Mac</small></span><span class="act"><span class="m-btn sm">Change…</span></span></div>
+        </div>
+      </div>
+    </div>
+    <div class="notes">
+      <div class="note"><i>1</i><span>Presets are the whole story for most users. They map onto existing settings (model, batchSize, concurrency, lookaheadMs, idlePretranslate) so nothing new in the engine is required.</span></div>
+      <div class="note"><i>2</i><span>Engines page absorbs the Ollama/Whisper/mpv/path fields with detection and Test. "Models…" opens the pull/remove sheet with sizes and progress, using the existing pull API.</span></div>
+      <div class="note"><i>·</i><span>Settings opens as its own window (⌘,) so it never fights the video. General: language of the UI, open at login, auto-hide library. Metadata: TMDB key + Test, Wikidata on/off. Storage: one folder picker, usage per category, Clear cache with a size.</span></div>
+    </div>
+  </div>
+
+  <!-- MENUS -->
+  <div class="screen" data-screen="menus" hidden>
+    <div class="frame">
+      <div class="menubar"><span class="app"></span><span class="app">AI Subs Player</span><span class="on">File</span><span>Playback</span><span>Subtitles</span><span>View</span><span>Window</span><span>Help</span></div>
+      <div class="menus">
+        <div class="m-menu"><div class="hd">File</div><div>Open File… <span class="k">⌘O</span></div><div>Add Folder… <span class="k">⇧⌘O</span></div><div>Open Recent <span class="k">▸</span></div><hr><div>Choose Subtitle File…</div><div>Export Subtitles… <span class="k">⌘E</span></div><hr><div>Rescan Library <span class="k">⌘R</span></div><div>Close Video <span class="k">⌘W</span></div></div>
+        <div class="m-menu"><div class="hd">Playback</div><div>Play / Pause <span class="k">space</span></div><div>Back 10 s <span class="k">J</span></div><div>Forward 10 s <span class="k">L</span></div><hr><div>Next Episode <span class="k">N</span></div><div>Previous Episode <span class="k">P</span></div><hr><div>Speed <span class="k">▸</span></div><div>Audio Track <span class="k">▸</span></div><div>Mute <span class="k">M</span></div></div>
+        <div class="m-menu"><div class="hd">Subtitles</div><div class="on">Hebrew (online · OpenSubtitles)</div><div>Hebrew (translated here)</div><div>Hebrew + English</div><div>English (source)</div><div>Off</div><hr><div>Search Online Subtitles…</div><hr><div>Delay − 100 ms <span class="k">,</span></div><div>Delay + 100 ms <span class="k">.</span></div><div>Reset Delay</div><hr><div>Target Language for this Title <span class="k">▸</span></div><div>Translate Whole File Now</div><div>Rebuild Context</div></div>
+        <div class="m-menu"><div class="hd">View</div><div class="on">Library <span class="k">⌘1</span></div><div>Subtitle Lines <span class="k">⌘2</span></div><div>Cast &amp; Terms <span class="k">⌘3</span></div><hr><div>Enter Full Screen <span class="k">⌃⌘F</span></div><div>Auto-hide Library While Playing</div></div>
+        <div class="m-menu"><div class="hd">Help</div><div>Check Setup…</div><div>Show Logs</div><div>Keyboard Shortcuts <span class="k">⌘/</span></div><hr><div>About</div></div>
+      </div>
+    </div>
+    <div class="notes">
+      <div class="note"><i>·</i><span>A native macOS menu makes every action discoverable and gives shortcuts for free. Today the app has Electron's default menu, which is unrelated to what it does.</span></div>
+      <div class="note"><i>·</i><span>Subtitles menu is the home of everything subtitle-related during playback. Both Hebrew tracks are listed when an online file exists, so switching between the human file and the app's translation is one click (D3b). "Target Language for this Title" is the per-title override (D9, decided).</span></div>
+    </div>
+  </div>
+
+  <!-- DIALOGS -->
+  <div class="screen" data-screen="dialogs" hidden>
+    <div class="frame"><div class="dlg-wrap">
+      <div class="dlg">
+        <div class="dh">No subtitles found in this file</div>
+        <div class="db"><span>Perfect Days (2023) · 2:04:10 · the video keeps playing without subtitles while you decide.</span>
+          <div class="opt rec"><b>Download subtitles found online</b><small>Hebrew · OpenSubtitles · matches this exact file (in sync). Also English · 3 results, used as the translation source if you prefer the app's translation.</small></div>
+          <div class="opt"><b>Transcribe with Whisper</b><small>About 9 minutes on this Mac (large-v3-turbo). Runs in the background; Hebrew appears when it is done.</small></div>
+          <div class="opt"><b>Choose a subtitle file…</b><small>An .srt or .vtt you already have.</small></div>
+          <div class="opt"><b>Play without subtitles</b><small>You can search or transcribe later from the Subtitles menu.</small></div>
+          <label style="display:flex;gap:8px;align-items:center;font-size:12px"><span class="m-switch"></span> Do this for every file with no subtitles</label>
+        </div>
+        <div class="df"><span class="m-btn ghost">Play without subtitles</span><span class="m-btn pri">Download Hebrew</span></div>
+      </div>
+      <div class="dlg">
+        <div class="dh">Needs attention · Anatomy of a Fall (2023)</div>
+        <div class="db"><span>The only subtitle track is French. The translator was told to expect English, so names and genders may be wrong.</span>
+          <div class="opt rec"><b>Translate from French</b><small>Sets the source language for this title.</small></div>
+          <div class="opt"><b>Choose a subtitle file…</b></div>
+        </div>
+        <div class="df"><span class="m-btn ghost">Later</span><span class="m-btn pri">Translate from French</span></div>
+      </div>
+      <div class="dlg">
+        <div class="dh">Up next · S02E04 “Woe's Hollow”</div>
+        <div class="db"><span>Starts in 8 s. It is already translated (Instant).</span><div class="pbar" style="--v:20%"><i></i></div></div>
+        <div class="df"><span class="m-btn ghost">Stay here</span><span class="m-btn pri">Play now</span></div>
+      </div>
+    </div></div>
+    <div class="notes">
+      <div class="note"><i>·</i><span>Dialogs are for decisions. Each names the situation, states the cost (minutes), recommends one option, and never blocks playback.</span></div>
+      <div class="note"><i>·</i><span>The Whisper estimate needs one number the app does not measure yet: realtime factor on this Mac. Measure it during the first transcription and store it.</span></div>
+      <div class="note"><i>·</i><span>Online sources: OpenSubtitles REST API (free developer key; per-user daily download quota, roughly 5 anonymous, 10–20 with a free account, 1000 with VIP at about 15 USD a year, to be verified at build time) and Subdl as a second free source. Ktuvit has no API and is not used.</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FEATURES ============ -->
+<section class="sec" id="features">
+  <div class="sec-head">
+    <span class="eyebrow">5 · Must-have features</span>
+    <h2>What a viewer expects before they will forgive anything else</h2>
+    <p>Tiered by what it costs a viewer to live without it. Effort is a rough size for one developer familiar with the codebase; the notes say which existing code it touches.</p>
+  </div>
+  <div class="prio">
+    <div class="feat"><span class="tier must">Must</span><div><b>Play first, prepare behind</b>Split session open into load + prepare; hot-swap the subtitle track. Touches session.ts, ipc.ts, MpvStage.</div><span class="eff"><b>M</b> · 2–3 d</span></div>
+    <div class="feat"><span class="tier must">Must</span><div><b>Keyboard shortcuts + native menu bar</b>One keymap in the renderer, Electron Menu template, forwarded to mpv.</div><span class="eff"><b>S</b> · 1 d</span></div>
+    <div class="feat"><span class="tier must">Must</span><div><b>Fullscreen, volume, mute, audio track, subtitle mode, delay, ±10 s</b>mpv properties already exist; add to the contract and the transport.</div><span class="eff"><b>M</b> · 2 d</span></div>
+    <div class="feat"><span class="tier must">Must</span><div><b>Setup screen + Engines page with detection, pickers and tests</b>Replaces hardcoded external-drive defaults.</div><span class="eff"><b>M</b> · 2–3 d</span></div>
+    <div class="feat"><span class="tier must">Must</span><div><b>Whisper consent dialog with estimate</b>Move transcription into the background queue.</div><span class="eff"><b>S</b> · 1 d</span></div>
+    <div class="feat"><span class="tier must">Must</span><div><b>Online subtitle search (OpenSubtitles + Subdl)</b>Hash and title lookup, download to cache, "Hebrew online" library state, hash-matched Hebrew as default track, optional account sign-in. Decided in D3/D3b.</div><span class="eff"><b>M</b> · 2–3 d</span></div>
+    <div class="feat"><span class="tier must">Must</span><div><b>Docked side panel (Lines / Cast &amp; terms / Info), no more hiding the video</b>Replaces drawer + modal.</div><span class="eff"><b>M</b> · 2 d</span></div>
+    <div class="feat"><span class="tier must">Must</span><div><b>Export subtitles (.srt / .vtt), optional auto-sidecar</b>Serialize from cache; the sibling app's srt.ts is a reference.</div><span class="eff"><b>S</b> · ½ d</span></div>
+    <div class="feat"><span class="tier must">Must</span><div><b>Open file, drag and drop, persisted folders, recents</b>Library state survives relaunch.</div><span class="eff"><b>S</b> · 1 d</span></div>
+    <div class="feat"><span class="tier must">Must</span><div><b>Resume position + Continue watching + next episode</b>Per-hash position store.</div><span class="eff"><b>S</b> · 1 d</span></div>
+    <div class="feat"><span class="tier must">Must</span><div><b>Live corrections without losing the cache</b>Per-cue bible hash; re-translate only affected lines.</div><span class="eff"><b>M</b> · 2 d</span></div>
+    <div class="feat"><span class="tier should">Should</span><div><b>Single status vocabulary + StatusChip + attention popover</b></div><span class="eff"><b>S</b> · 1 d</span></div>
+    <div class="feat"><span class="tier should">Should</span><div><b>Translation presets (Fast / Balanced / Quality) and a restructured Settings window</b></div><span class="eff"><b>M</b> · 2 d</span></div>
+    <div class="feat"><span class="tier should">Should</span><div><b>Queue view: per-item translate now / move to front / cancel, estimates, done notification, dock badge</b></div><span class="eff"><b>M</b> · 2 d</span></div>
+    <div class="feat"><span class="tier should">Should</span><div><b>Inline line editing and "retranslate with hint"</b></div><span class="eff"><b>S</b> · 1 d</span></div>
+    <div class="feat"><span class="tier should">Should</span><div><b>Source-language detection and per-title target override</b></div><span class="eff"><b>M</b> · 1–2 d</span></div>
+    <div class="feat"><span class="tier should">Should</span><div><b>Prevent display sleep while playing; collapsible library; live subtitle style preview</b></div><span class="eff"><b>S</b> · 1 d</span></div>
+    <div class="feat"><span class="tier must">Must</span><div><b>Single-window playback via a libmpv render-API native addon</b>Decided first (D8). One-week spike with three exit criteria: first frame in the BrowserWindow, seek + subtitle reload, HiDPI and fullscreen correct. Unlocks overlay controls and removes the window glue.</div><span class="eff"><b>XL</b> · 1–3 wk</span></div>
+    <div class="feat"><span class="tier later">Later</span><div><b>Idle Quality re-pass with the 12b model</b>Doubles compute; needs a second cache slot and a "which version is showing" indicator.</div><span class="eff"><b>M</b></span></div>
+    <div class="feat"><span class="tier should">Should</span><div><b>Poster grid as a library view toggle, TMDB during scan</b>Decided in D5; second phase after rows. Needs network at scan time and a thumbnail cache.</div><span class="eff"><b>M</b> · 2–3 d</span></div>
+    <div class="feat"><span class="tier later">Later</span><div><b>Remote / mobile companion</b>The contract is transport-agnostic already; a LAN WebSocket server plus a phone remote (play/pause, subtitle mode) is the cheap version.</div><span class="eff"><b>L</b></span></div>
+  </div>
+</section>
+
+<!-- ============ BACKLOG ============ -->
+<section class="sec" id="backlog">
+  <div class="sec-head">
+    <span class="eyebrow">6 · Everything else</span>
+    <h2>Add, change, remove</h2>
+    <p>Smaller items that did not earn a finding of their own but should be on the list.</p>
+  </div>
+  <div class="acr">
+    <div class="col"><h3>Add <span style="background:var(--ok-bg);color:var(--ok)">new</span></h3><ul>
+      <li><b>Hover timecode and cue preview on the scrub bar</b> (the source line at that point).</li>
+      <li><b>"Why this translation?"</b> on a cue: shows the bible entries and context lines that were in the prompt. Cheap, and the fastest way to debug a wrong gender.</li>
+      <li><b>Report line</b> that appends the cue + translation + hint to a local corrections file. Feeds a future fine-tune or few-shot set.</li>
+      <li><b>Measured throughput</b> on the Engines page: tokens/s for the current model, Whisper realtime factor. Feeds the estimates.</li>
+      <li><b>Chapters</b> from mpv's chapter list on the scrub bar.</li>
+      <li><b>Season-level actions</b>: translate this season, export all, mark watched.</li>
+      <li><b>Open with</b> registration for mkv/mp4/mov/avi/webm and a Dock drop target.</li>
+      <li><b>Logs window</b> (Help → Show Logs) showing the mpv and Ollama stderr already captured in main.</li>
+      <li><b>Onboarding tip</b> the first time Hebrew appears: "Press S to switch to Hebrew + English".</li>
+    </ul></div>
+    <div class="col"><h3>Change <span style="background:var(--med-bg);color:var(--med)">rework</span></h3><ul>
+      <li><b>Sidebar header</b> becomes the folder switcher; brand moves to About.</li>
+      <li><b>"Bible"</b> → Cast &amp; terms; <b>"coverage"</b> → translated; <b>"ASR"</b> → transcribing; <b>"JIT"</b> disappears from the UI.</li>
+      <li><b>Speed control</b>: 0.5–2× in 0.25 steps with <kbd>[</kbd> <kbd>]</kbd>, not a five-item select.</li>
+      <li><b>Bilingual</b> becomes the "Both" subtitle mode, switchable during playback, not a setting.</li>
+      <li><b>Boolean selects</b> in Settings become switches.</li>
+      <li><b>Empty stage</b> text "mpv plays every codec; subtitles are translated on the fly" goes; the empty state is the library.</li>
+      <li><b>Error chip</b> becomes Needs attention with a popover and an action.</li>
+      <li><b>Cache root, models dir, Whisper dir</b> collapse into one Storage folder with subfolders, unless the user overrides each under Advanced.</li>
+      <li><b>Window minimum</b> stays 960×640, but the library collapses below 1100 px wide during playback.</li>
+    </ul></div>
+    <div class="col"><h3>Remove <span style="background:var(--crit-bg);color:var(--crit)">drop</span></h3><ul>
+      <li><b>"Translate all" top-bar button</b> → context menu and Subtitles menu.</li>
+      <li><b>"Pre-translate library" all-or-nothing button</b> → per-title queue actions.</li>
+      <li><b>Hardcoded <code>/Volumes/EP2TB</code> defaults</b>.</li>
+      <li><b>The Ollama dot</b> in the top bar. Status lives on the Engines page and in Needs attention when it matters.</li>
+      <li><b>Hiding mpv for modals</b> (<code>setStageVisible</code>), once panels dock.</li>
+      <li><b>The 30-word brand line</b> in the sidebar.</li>
+      <li><b>Emoji icons</b>.</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- ============ DECISIONS ============ -->
+<section class="sec" id="decisions">
+  <div class="sec-head">
+    <span class="eyebrow">7 · Decisions</span>
+    <h2>Fourteen calls, all made</h2>
+    <p>Asked one at a time on 5 Sept 2026. Blue marks my recommendation, green marks what was decided. Where they differ, the note under the card says what changes in the plan.</p>
+  </div>
+  <div class="stack">
+
+    <div class="dec"><div class="dq"><span class="id">D1</span><h3>Who is this for: you and your drive, or something you would hand to another person?</h3></div>
+      <div class="opts">
+        <div class="opt rec chosen"><span><b>Shippable single-user app</b><small>Defaults work on a fresh Mac; the external drive is a choice. Setup screen is real.</small></span></div>
+        <div class="opt"><span><b>Personal tool</b><small>Keep hardcoded paths; skip Setup; only fix the player and panels.</small></span></div>
+      </div>
+      <div class="why"><b>Why it matters:</b> it decides whether findings C4 and H6 (setup, pickers, defaults) are in scope. Recommendation: shippable. It costs about three days and removes an entire class of "why doesn't it work" moments, including for you after a reinstall.<div class="decided"><span class="tag">Decided</span><span>Shippable single-user app. Setup screen, path pickers and clean defaults are in scope; the external drive becomes a choice made in Setup.</span></div></div></div>
+
+    <div class="dec"><div class="dq"><span class="id">D2</span><h3>What shows while the Hebrew is not ready yet?</h3></div>
+      <div class="opts">
+        <div class="opt rec chosen"><span><b>Play at once with the source subtitles, swap to Hebrew when the runway is ready</b><small>Never a blank wait. Slight "flash" from English to Hebrew once per open on cold files.</small></span></div>
+        <div class="opt"><span><b>Play at once with no subtitles until Hebrew is ready</b><small>Cleaner, but 10–40 s of silence on cold files.</small></span></div>
+        <div class="opt"><span><b>Hold playback until the runway is ready (today, improved)</b><small>Only defensible if you always pre-translate.</small></span></div>
+      </div>
+      <div class="why"><b>Recommendation:</b> the first. A setting "show the source line until its translation is ready" covers people who dislike the swap.<div class="decided"><span class="tag">Decided</span><span>Play at once with the source subtitles, swap to Hebrew when the runway covers the playhead. Session open is split into load and prepare.</span></div></div></div>
+
+    <div class="dec"><div class="dq"><span class="id">D3</span><h3>When a file has no subtitles, what should Whisper do?</h3></div>
+      <div class="opts">
+        <div class="opt rec chosen"><span><b>Ask each time, with an estimate; remember-my-choice checkbox</b></span></div>
+        <div class="opt"><span><b>Always transcribe automatically in the background</b><small>Zero friction, but nine minutes of GPU with no consent, and it competes with translation.</small></span></div>
+        <div class="opt"><span><b>Never automatic; a "Transcribe" action only</b></span></div>
+      </div>
+      <div class="why"><b>Recommendation:</b> ask. The remember checkbox turns it into option two for people who want that.<div class="decided"><span class="tag">Decided</span><span>Ask each time with an estimate, and additionally search online for subtitle files in the preferred languages (Hebrew, English) and offer them in the same dialog. Added as a must-have feature and a new decision D3b below.</span></div></div></div>
+    <div class="dec"><div class="dq"><span class="id">D3b</span><h3>When an online Hebrew subtitle exists, how does it relate to the app's own translation?</h3></div>
+      <div class="opts">
+        <div class="opt rec chosen"><span><b>Offer both, prefer online Hebrew when it hash-matches</b><small>Library row shows "Hebrew online". A hash match is in sync and human-made, so it becomes the default track; the app's translation stays one click away in the Subtitles menu. Non-hash matches are offered but not auto-selected.</small></span></div>
+        <div class="opt"><span><b>Online search only as the no-subtitles fallback</b></span></div>
+        <div class="opt"><span><b>Always ask per file</b></span></div>
+      </div>
+      <div class="why"><b>Consequence:</b> online lookup runs for every file at scan or open time, not only when subtitles are missing. Sources: OpenSubtitles REST API (free key, per-user daily quota; VIP about 15 USD/year for 1000 downloads a day, to be verified) and Subdl. Ktuvit is scrape-only and excluded.</div>
+      <div class="decided"><span class="tag">Decided</span><span>Offer both; a hash-matched online Hebrew file is the default track.</span></div></div>
+
+    <div class="dec"><div class="dq"><span class="id">D4</span><h3>Where do Lines and Cast &amp; terms live?</h3></div>
+      <div class="opts">
+        <div class="opt rec chosen"><span><b>Docked right panel that shrinks the stage</b><small>Works today with two windows; video stays visible.</small></span></div>
+        <div class="opt"><span><b>Separate floating window</b><small>Good for two monitors, awkward on a laptop.</small></span></div>
+        <div class="opt"><span><b>Keep the drawer, but pause and hide the video</b><small>Cheapest; still breaks "fix it while I see it".</small></span></div>
+      </div>
+      <div class="why"><b>Recommendation:</b> docked. It reuses the stage-bounds mechanism that already keeps mpv aligned on resize.<div class="decided"><span class="tag">Decided</span><span>Docked right panel. Reuses the stage-bounds reporting; nothing overlays the video.</span></div></div></div>
+
+    <div class="dec"><div class="dq"><span class="id">D5</span><h3>Library presentation</h3></div>
+      <div class="opts">
+        <div class="opt rec"><span><b>Rows with chips, plus a small Continue-watching strip</b><small>Fast, offline, information-dense. Posters only where the Bible already has one.</small></span></div>
+        <div class="opt chosen"><span><b>Both, with a toggle (added during the interview)</b><small>Rows first, grid second.</small></span></div>
+        <div class="opt"><span><b>Poster grid (Plex-like)</b><small>Needs TMDB at scan time, a thumbnail cache, and hides the status chips that matter here.</small></span></div>
+      </div>
+      <div class="why"><b>Recommendation:</b> rows now, grid later if you find yourself browsing rather than choosing.<div class="decided"><span class="tag">Decided</span><span>Both views with a toggle. Pushback accepted as sequencing: rows ship first, the poster grid follows as a second phase so the two views are not built and debugged in the same pass.</span></div></div></div>
+
+    <div class="dec"><div class="dq"><span class="id">D6</span><h3>After a cast correction, what happens to existing translations?</h3></div>
+      <div class="opts">
+        <div class="opt rec chosen"><span><b>Re-translate only lines that mention the changed name/alias, live</b><small>Keeps the cache; a dozen lines, seconds.</small></span></div>
+        <div class="opt"><span><b>Re-translate the whole file in the background</b><small>Safer for pronoun-only lines ("she said"), costs a full pass.</small></span></div>
+        <div class="opt"><span><b>Keep today's behaviour</b><small>Whole cache discarded on next open. Not recommended.</small></span></div>
+      </div>
+      <div class="why"><b>Recommendation:</b> the first, plus a "Re-translate whole file" button in the panel for when the gender change affects lines that never say the name.<div class="decided"><span class="tag">Decided</span><span>Re-translate only affected lines, live, keeping the cache. A "Re-translate whole file" button stays in the panel.</span></div></div></div>
+
+    <div class="dec"><div class="dq"><span class="id">D7</span><h3>Settings: presets or knobs?</h3></div>
+      <div class="opts">
+        <div class="opt rec chosen"><span><b>Fast / Balanced / Quality presets, knobs under Advanced</b></span></div>
+        <div class="opt"><span><b>Keep every knob at top level, better labelled</b></span></div>
+      </div>
+      <div class="why"><b>Recommendation:</b> presets. You are the one tuning; the Advanced page keeps every value editable and shows which preset it drifted from.<div class="decided"><span class="tag">Decided</span><span>Presets, with every knob still editable under Advanced.</span></div></div></div>
+
+    <div class="dec"><div class="dq"><span class="id">D8</span><h3>How much to invest in single-window playback?</h3></div>
+      <div class="opts">
+        <div class="opt rec"><span><b>Later: do the flow work first, then a libmpv render-API native addon as its own milestone</b><small>1–3 weeks. Unlocks overlay controls, real fullscreen, and removes the floating-window glitches listed in the README.</small></span></div>
+        <div class="opt chosen"><span><b>Now, before anything else</b><small>Everything on the stage would be built once, on the final architecture.</small></span></div>
+        <div class="opt"><span><b>Never; live with two windows</b><small>Controls stay below the stage forever; fullscreen means mpv's own fullscreen with a transparent control window on top, which is fragile.</small></span></div>
+      </div>
+      <div class="why"><b>Recommendation:</b> later, but committed. Most of this report does not depend on it; the player controls are designed to sit below the stage now and move onto it afterwards. Alternatives like mpv's <code>--wid</code> are not usable from Electron on macOS, and mpv.js is unmaintained, so the addon is the proven route (it is what IINA does, in Swift).<div class="decided"><span class="tag">Decided</span><span>Single-window first. Planned as a one-week spike with three exit criteria (first frame in the window, seek and subtitle reload, HiDPI + fullscreen). Work that does not touch the stage runs in parallel; if the spike fails, controls fall back to below the stage.</span></div></div></div>
+
+    <div class="dec"><div class="dq"><span class="id">D9</span><h3>Target language: one global setting, or per title?</h3></div>
+      <div class="opts">
+        <div class="opt rec chosen"><span><b>Global default plus a per-title override in the Subtitles menu</b></span></div>
+        <div class="opt"><span><b>Global only (today)</b></span></div>
+      </div>
+      <div class="why"><b>Recommendation:</b> override. The cache is already keyed by language, so it costs one field in the per-title state.<div class="decided"><span class="tag">Decided</span><span>Global default plus per-title override.</span></div></div></div>
+
+    <div class="dec"><div class="dq"><span class="id">D10</span><h3>Product name</h3></div>
+      <div class="opts">
+        <div class="opt"><span><b>Keep "VideoPlayerAutoSubs"</b></span></div>
+        <div class="opt rec chosen"><span><b>Pick a short name now</b><small>It appears in the menu bar, Dock, notifications and "Open with". Candidates: Ivrit Player (pairs with Ivrit Subs), Kotrot ("subtitles" in Hebrew), Dubbeh.</small></span></div>
+      </div>
+      <div class="why"><b>Recommendation:</b> decide before the menu bar lands; renaming later touches the bundle id and settings path.<div class="decided"><span class="tag">Decided</span><span>AI Subs Player. Bundle id io.smashgames.aisubsplayer. Used in the menu bar, Dock, notifications and "Open with".</span></div></div></div>
+
+    <div class="dec"><div class="dq"><span class="id">D11</span><h3>Export behaviour</h3></div>
+      <div class="opts">
+        <div class="opt rec chosen"><span><b>Manual export (⌘E, context menu), plus an off-by-default "write .he.srt next to the video at 100%"</b></span></div>
+        <div class="opt"><span><b>Always write the sidecar automatically</b><small>Convenient, but it writes into your media folders without asking and other players will pick it up.</small></span></div>
+      </div>
+      <div class="why"><b>Recommendation:</b> manual by default. Writing into a media library is the kind of side effect people want to opt into.<div class="decided"><span class="tag">Decided</span><span>Manual export plus an off-by-default auto-sidecar switch.</span></div></div></div>
+
+    <div class="dec"><div class="dq"><span class="id">D12</span><h3>Idle "Quality" re-pass with gemma3:12b</h3></div>
+      <div class="opts">
+        <div class="opt rec chosen"><span><b>Not now</b><small>Adds a second cache slot per title and a "which version am I seeing" question. Revisit after the flow work.</small></span></div>
+        <div class="opt"><span><b>Yes, as an opt-in switch in Translation</b></span></div>
+      </div>
+      <div class="why"><b>Recommendation:</b> defer. The 4b model with a correct Bible already fixes the class of errors that the 12b model would mostly be fixing.<div class="decided"><span class="tag">Decided</span><span>Not now. Revisit after the flow work ships.</span></div></div></div>
+
+  </div>
+</section>
+
+<!-- ============ PLAN ============ -->
+<section class="sec" id="plan">
+  <div class="sec-head">
+    <span class="eyebrow">8 · Plan</span>
+    <h2>Four phases, in the order the decisions imply</h2>
+    <p>D8 puts the riskiest work first, so phase 1 is a time-boxed spike with a fallback, and everything that does not touch the video stage runs beside it. Sizes are for one developer who knows the codebase.</p>
+  </div>
+  <div class="phases">
+    <div class="phase"><div class="ph"><b>Phase 1</b><small>week 1–2</small><span class="small muted">Foundation and the spike</span></div><div>
+      <ul>
+        <li><b>libmpv render-API addon spike</b> (D8). Exit criteria: first frame inside the BrowserWindow, seek and ASS reload working, HiDPI and fullscreen correct. Hard stop after one week.</li>
+        <li>In parallel, off the stage: <b>Setup screen and Engines page</b> with detection, pickers, tests, model download (D1); defaults move to the app support folder.</li>
+        <li><b>Library persistence</b>: folders remembered, rescan, open file, drag and drop, recents, resume positions, Continue watching row.</li>
+        <li><b>Rename to AI Subs Player</b> (D10): productName, appId, window title, About.</li>
+      </ul>
+      <div class="gate"><b>Gate:</b> spike passes → phase 2 builds controls on the video. Spike fails → phase 2 builds the same controls below the stage; nothing else changes.</div>
+    </div></div>
+    <div class="phase"><div class="ph"><b>Phase 2</b><small>week 3–4</small><span class="small muted">The player and the flow</span></div><div>
+      <ul>
+        <li><b>Play first, prepare behind</b> (D2): session split into load and prepare; source track shown, Hebrew swapped in when the runway covers the playhead.</li>
+        <li><b>Player controls</b>: keyboard map, native menu bar, fullscreen, volume, audio track, subtitle mode, delay, ±10 s, three-tone scrub bar, stage pills.</li>
+        <li><b>No-subtitles flow</b> (D3, D3b): OpenSubtitles + Subdl lookup, "Hebrew online" state, download to cache, hash-matched Hebrew as default track, Whisper dialog with a measured estimate, transcription in the background queue.</li>
+        <li><b>Docked panel</b> (D4) with Lines / Cast &amp; terms / Info; live corrections re-translating only affected lines (D6); inline line edit and retranslate with hint.</li>
+        <li><b>Export</b> (D11): ⌘E, context menu, off-by-default auto-sidecar.</li>
+      </ul>
+    </div></div>
+    <div class="phase"><div class="ph"><b>Phase 3</b><small>week 5</small><span class="small muted">Polish and consistency</span></div><div>
+      <ul>
+        <li><b>Settings window</b> with pages and Fast / Balanced / Quality presets (D7); per-title target language (D9); source-language detection.</li>
+        <li><b>One status vocabulary</b>, StatusChip, Needs-attention popover, icon set replacing emoji.</li>
+        <li><b>Queue view</b>: per-item translate now / move to front / cancel, estimates, completion notification, dock badge; display-sleep prevention; collapsible library.</li>
+      </ul>
+    </div></div>
+    <div class="phase"><div class="ph"><b>Phase 4</b><small>later</small><span class="small muted">Deferred by decision</span></div><div>
+      <ul>
+        <li><b>Poster grid</b> as the second library view (D5), with TMDB at scan time and a thumbnail cache.</li>
+        <li><b>Idle Quality re-pass</b> with gemma3:12b (D12), second cache slot and version indicator.</li>
+        <li>Remote / mobile companion over the existing transport-agnostic contract.</li>
+      </ul>
+      <div class="gate"><b>Open item:</b> verify OpenSubtitles API tiers and quotas at build time; the numbers in this report are approximate.</div>
+    </div></div>
+  </div>
+</section>
+
+<!-- ============ MODELS ============ -->
+<section class="sec" id="models">
+  <div class="sec-head">
+    <span class="eyebrow">9 · Execution</span>
+    <h2>Which model runs which task, and the prompt that drives it</h2>
+    <p>Fable 5.1 goes only where a wrong answer is expensive to discover: native code and the async state machine around playback. Opus 5 takes work that spans files and has invariants to preserve. Sonnet 5 takes well-specified UI, which is most of the plan by volume. Haiku 4.5 takes mechanical edits with an obvious pass or fail.</p>
+  </div>
+
+  <div class="stack">
+    <h4>Rates</h4>
+    <div class="tbl"><table>
+      <tr><th>Model</th><th>ID</th><th>Context</th><th class="num">Input $/MTok</th><th class="num">Output $/MTok</th></tr>
+      <tr><td><span class="mdl fable">fable</span> Claude Fable 5.1</td><td><code>claude-fable-5-1</code></td><td>1M</td><td class="num">10.00</td><td class="num">50.00</td></tr>
+      <tr><td><span class="mdl opus">opus</span> Claude Opus 5</td><td><code>claude-opus-5</code></td><td>1M</td><td class="num">5.00</td><td class="num">25.00</td></tr>
+      <tr><td><span class="mdl sonnet">sonnet</span> Claude Sonnet 5</td><td><code>claude-sonnet-5</code></td><td>1M</td><td class="num">2.00</td><td class="num">10.00</td></tr>
+      <tr><td><span class="mdl haiku">haiku</span> Claude Haiku 4.5</td><td><code>claude-haiku-4-5</code></td><td>200K</td><td class="num">1.00</td><td class="num">5.00</td></tr>
+    </table></div>
+
+    <h4 style="margin-top:12px">Task assignment, in execution order</h4>
+    <div class="tbl"><table>
+      <tr><th style="width:44px">#</th><th>Task</th><th style="width:74px">Model</th><th>Why this tier</th></tr>
+      <tr><td colspan="4" style="background:var(--panel-2);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-2)">Phase 1 · foundation and the spike</td></tr>
+      <tr><td>1.1</td><td>libmpv render-API native addon spike</td><td><span class="mdl fable">fable</span></td><td>C++ and Objective-C++ against an unfamiliar C API, GPU callbacks on the wrong thread, HiDPI scaling. Run at max effort.</td></tr>
+      <tr><td>1.2</td><td>Setup screen and Engines page: detection, pickers, tests, model pull, defaults off the external drive</td><td><span class="mdl opus">opus</span></td><td>Spans config, defaults, IPC and two new screens, with product judgment about what blocks the primary button.</td></tr>
+      <tr><td>1.3</td><td>Library persistence, open file, drag and drop, recents, resume positions, Continue watching</td><td><span class="mdl sonnet">sonnet</span></td><td>Standard dialogs and a small JSON store. No hidden invariants.</td></tr>
+      <tr><td>1.4</td><td>Rename to AI Subs Player, bundle id, window title, About</td><td><span class="mdl haiku">haiku</span></td><td>Mechanical; the build either produces the renamed app or it does not.</td></tr>
+      <tr><td colspan="4" style="background:var(--high-bg);color:var(--high);font-size:12.5px"><b>Gate.</b> One week on 1.1. Pass and Phase 2 draws controls over the video. Fail and Phase 2 builds the same controls below the stage. Nothing else changes.</td></tr>
+      <tr><td colspan="4" style="background:var(--panel-2);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-2)">Phase 2 · the player and the flow</td></tr>
+      <tr><td>2.1</td><td>Play first, prepare behind: split load from prepare, cancellable, hot-swap the track</td><td><span class="mdl fable">fable</span></td><td>An async state machine over mpv, the scheduler and an abort signal. Seek during prepare and open-another-file mid-prepare are real races.</td></tr>
+      <tr><td>2.2</td><td>Online subtitle search, OpenSubtitles and Subdl, hash match, download to cache</td><td><span class="mdl opus">opus</span></td><td>Third-party contracts, the file-hash algorithm, quotas, and a new source of truth for which track plays.</td></tr>
+      <tr><td>2.3</td><td>Live corrections: per-cue bible hash, re-translate only affected lines</td><td><span class="mdl opus">opus</span></td><td>Changes the cache key design. Wrong invalidation silently discards work, which is the bug this task exists to fix.</td></tr>
+      <tr><td>2.4</td><td>Player controls: keymap, menu bar, fullscreen, volume, tracks, delay, scrub bar</td><td><span class="mdl sonnet">sonnet</span></td><td>Broad but shallow. Each control is one mpv property and one button.</td></tr>
+      <tr><td>2.5</td><td>Docked panel: Lines, Cast and terms, Info, inline edit, retranslate with hint</td><td><span class="mdl sonnet">sonnet</span></td><td>React over events that already exist. The hard half of corrections is 2.3.</td></tr>
+      <tr><td>2.6</td><td>Export subtitles, SRT and VTT, optional auto-sidecar</td><td><span class="mdl haiku">haiku</span></td><td>A serializer with a reference implementation in the sibling app.</td></tr>
+      <tr><td colspan="4" style="background:var(--panel-2);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-2)">Phase 3 · polish and consistency</td></tr>
+      <tr><td>3.1</td><td>Source-language detection and per-title target override</td><td><span class="mdl opus">opus</span></td><td>Both feed the cache key and the Bible. Cross-cutting.</td></tr>
+      <tr><td>3.2</td><td>Settings window with Fast / Balanced / Quality presets</td><td><span class="mdl sonnet">sonnet</span></td><td>Layout plus a preset-to-settings mapping table.</td></tr>
+      <tr><td>3.3</td><td>One status vocabulary, StatusChip, Needs-attention popover</td><td><span class="mdl sonnet">sonnet</span></td><td>A refactor with a clear target shape across three surfaces.</td></tr>
+      <tr><td>3.4</td><td>Queue view, estimates, notification, dock badge, sleep prevention</td><td><span class="mdl sonnet">sonnet</span></td><td>Queue manipulation over the existing background translator.</td></tr>
+      <tr><td>3.5</td><td>Replace emoji with an SVG icon set</td><td><span class="mdl haiku">haiku</span></td><td>Mechanical swap.</td></tr>
+      <tr><td colspan="4" style="background:var(--panel-2);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-2)">Phase 4 · deferred, and review passes</td></tr>
+      <tr><td>4.1</td><td>Poster grid as the second library view</td><td><span class="mdl sonnet">sonnet</span></td><td>UI plus a thumbnail cache, once rows are settled.</td></tr>
+      <tr><td>4.2</td><td>Idle quality re-pass with the 12b model (deferred by D12)</td><td><span class="mdl opus">opus</span></td><td>Second cache slot and a version indicator.</td></tr>
+      <tr><td>4.3</td><td>LAN remote companion over the existing contract</td><td><span class="mdl opus">opus</span></td><td>A new transport for the IPC contract.</td></tr>
+      <tr><td>—</td><td>Code review at the end of each phase</td><td><span class="mdl opus">opus</span></td><td>High effort over the phase diff.</td></tr>
+      <tr><td>—</td><td>Security review before any release build</td><td><span class="mdl fable">fable</span></td><td>The OpenSubtitles key handling and the native addon are the two places worth the top tier.</td></tr>
+    </table></div>
+
+    <h4 style="margin-top:12px">Order and parallelism</h4>
+    <div class="dag"><pre>1.1 spike ─────────────────────────────┐ (gate)
+1.2 setup ──┐                          │
+1.3 library ┼── parallel, worktrees    │
+1.4 rename ─┘                          │
+                                       ▼
+                       2.1 play-first ──┬── 2.4 controls
+                                        ├── 2.5 panel
+                       2.2 online subs ─┘
+                       2.3 corrections ──── 2.5 panel
+                       2.6 export (independent)
+                                       ▼
+                       3.1 first, then 3.2–3.5 in parallel</pre></div>
+    <div class="rules" style="margin-top:10px">
+      <div class="r"><div>Tasks 1.1 to 1.4 touch disjoint files, so they run as worktree-isolated agents.</div></div>
+      <div class="r"><div>Everything in phase 2 touches the IPC layer, the session or the app shell. Run 2.1 alone, merge it, then fan out.</div></div>
+      <div class="r"><div>Two agents must never edit the shared settings type at the same time. Settings additions land through the agent that owns the phase.</div></div>
+    </div>
+
+    <h4 style="margin-top:12px">The orchestration prompt</h4>
+    <p class="small muted">Paste into a fresh Claude Code session on the repository. It names the specification, the decisions, the delegation rules and the gate.</p>
+    <div class="promptbox">
+      <div class="pbh">Orchestrator prompt<span class="sp"></span><button id="copyPrompt" type="button">Copy</button></div>
+      <pre id="promptText">You are the orchestrator for the AI Subs Player implementation. The app is the Electron
+player under VideoPlayerAutoSubs/ in this repository. Work on branch
+claude/video-player-ux-review-rkthpq.
+
+Read these first and treat them as the specification:
+  - VideoPlayerAutoSubs/docs/ux-review/index.html   (audit, flow, UI system, mockups,
+    the 14 recorded decisions, and the four-phase plan)
+  - VideoPlayerAutoSubs/docs/ux-review/orchestration.md  (the task-to-model mapping)
+  - VideoPlayerAutoSubs/README.md and the code under VideoPlayerAutoSubs/electron and
+    VideoPlayerAutoSubs/src
+
+The decisions are settled. Do not reopen them. In short: play immediately and prepare
+subtitles behind the video; search OpenSubtitles and Subdl for every file and prefer a
+hash-matched Hebrew file over our own translation; ask before running Whisper, with a
+measured estimate; dock the Lines and Cast panels beside the video instead of over it;
+library gets both a row list and a poster grid, rows first; corrections re-translate only
+affected lines and keep the cache; Fast/Balanced/Quality presets with the raw knobs under
+Advanced; single-window playback via a libmpv render-API addon comes first as a
+time-boxed spike; global target language with a per-title override; the product is named
+AI Subs Player with bundle id io.smashgames.aisubsplayer; export is manual with an
+off-by-default auto-sidecar; no idle quality re-pass for now.
+
+How to run the work:
+
+Delegate each numbered task to a subagent with the model named in orchestration.md. Use
+the general-purpose agent type, pass model: "fable" | "opus" | "sonnet" | "haiku" exactly
+as the table says, and do not substitute a cheaper model to save budget. Run tasks in the
+stated order and respect the parallelism rules. Where the table marks tasks as parallel,
+launch them in one message with isolation: "worktree" so they do not fight over the same
+files, then merge them one at a time and resolve conflicts yourself.
+
+Every subagent brief must contain: the task number and title, the exact acceptance
+criteria from the plan, the files it is expected to touch, the files it must not touch,
+and the instruction to run `npm run build` in VideoPlayerAutoSubs (which runs tsc
+--noEmit and vite build) plus the relevant smoke script (npm run smoke:sched, npm run
+smoke:mpv) before reporting done. A subagent that cannot make the build pass reports the
+failure rather than weakening types or deleting a check.
+
+Start with task 1.1, the libmpv render-API native addon spike, on the fable model at max
+effort. Time-box it. Its three exit criteria are: a first frame rendered inside the
+Electron BrowserWindow, seek plus ASS subtitle reload working through the existing JSON
+IPC controller, and correct geometry under HiDPI and fullscreen. While it runs, launch
+1.2, 1.3 and 1.4 in parallel worktrees on opus, sonnet and haiku respectively.
+
+When the spike reports back, tell me the outcome and which branch of the plan we are on
+before starting Phase 2. If it passed, Phase 2 draws the player controls over the video.
+If it failed, Phase 2 builds the same controls below the stage and we keep the two-window
+mpv glue. Do not make that call silently.
+
+After each phase: run /code-review at high effort over the phase diff on the opus model,
+fix what it finds, then commit and push. Commit messages describe the change and its
+reason, one commit per task, no model names in the message. Do not open a pull request
+unless I ask.
+
+Report to me at each phase boundary and at every gate. Between those points, keep going
+without asking permission for work the plan already specifies.</pre>
+    </div>
+    <p class="small muted" style="margin-top:10px">For one task at a time, the short form is: "Implement task 2.2 from the orchestration doc, delegate it to a general-purpose subagent on the opus model, build must pass before you report done." The model assignment does not change when phases are run separately.</p>
+  </div>
+</section>
+
+<!-- ============ CODEX ============ -->
+<section class="sec" id="codex">
+  <div class="sec-head">
+    <span class="eyebrow">10 · Port</span>
+    <h2>The same plan, run in OpenAI Codex</h2>
+    <p>Everything above exports to Codex: the tasks, the design system and the order, with OpenAI models matched to the original assignment on price and on strength. The bundle lives in the repository under <code>VideoPlayerAutoSubs/docs/codex/</code>.</p>
+  </div>
+
+  <div class="stack">
+    <h4>Model mapping</h4>
+    <div class="tbl"><table>
+      <tr><th>Original</th><th class="num">in / out</th><th>Codex</th><th class="num">in / out</th><th>Why this is the match</th></tr>
+      <tr><td><span class="mdl fable">fable</span> Fable 5.1</td><td class="num">10 / 50</td><td><span class="mdl oai">astra</span> GPT-6 Astra</td><td class="num">10 / 50</td><td>Identical price and identical role: top tier, sold on long-horizon agentic and software engineering work. A one-for-one swap.</td></tr>
+      <tr><td><span class="mdl opus">opus</span> Opus 5</td><td class="num">5 / 25</td><td><span class="mdl oai">sol</span> GPT-5.6 Sol</td><td class="num">5 / 30</td><td>Input matches exactly, output 20% higher. Flagship-minus-one on both sides. GPT-5.5 is the same rate if your account has it instead.</td></tr>
+      <tr><td><span class="mdl sonnet">sonnet</span> Sonnet 5</td><td class="num">2 / 10</td><td><span class="mdl oai">terra</span> GPT-5.6 Terra</td><td class="num">2 / 12</td><td>Input matches exactly. Terra is the Codex workhorse that replaced GPT-5.4, the same position Sonnet holds.</td></tr>
+      <tr><td><span class="mdl haiku">haiku</span> Haiku 4.5</td><td class="num">1 / 5</td><td><span class="mdl oai">luna</span> GPT-5.6 Luna</td><td class="num">0.20 / 1.20</td><td>The cheap tier on both sides. Luna is far cheaper than Haiku, so the mechanical tasks cost less in this version.</td></tr>
+    </table></div>
+    <p class="small muted">Rates gathered September 2026 from public pricing pages; OpenAI's own docs were unreachable from the machine that wrote this, so confirm before budgeting. Sol took a temporary cut of more than 20% on 21 August 2026. GPT-5.4 and GPT-5.4-mini left Codex on 31 August 2026, replaced by Terra and Luna. GPT-5.3 Codex Spark is not used here: its price is unconfirmed and it sells latency, not depth, which is the opposite of what the two hard tasks need.</p>
+
+    <h4 style="margin-top:12px">What changes in the port</h4>
+    <div class="rules">
+      <div class="r"><div><b>No subagents.</b> Codex runs one agent per process, so each task becomes a <code>codex exec</code> invocation with its own model, and parallel work uses real git worktrees and concurrent processes instead of parallel subagents.</div></div>
+      <div class="r"><div><b>Instructions move into <code>AGENTS.md</code></b>, which Codex loads automatically. The decisions, build commands and conventions are inherited by every task instead of restated in a long orchestrator prompt.</div></div>
+      <div class="r"><div><b>Effort is a config key.</b> <code>model_reasoning_effort</code> takes minimal through xhigh. The two hard tasks run at xhigh; mechanical tasks run at low and save real money.</div></div>
+      <div class="r"><div><b>The gate is manual.</b> Codex will not stop and ask at a phase boundary, so the driver script stops after the spike and after each phase and waits for you.</div></div>
+    </div>
+
+    <h4 style="margin-top:12px">The bundle</h4>
+    <div class="files">
+      <div class="f"><code>AGENTS.md</code><span>Project instructions Codex loads before any task: architecture map, build commands, the thirteen settled decisions, conventions and hard rules.</span></div>
+      <div class="f"><code>docs/codex/tasks.md</code><span>All twenty tasks with model, effort, dependencies, acceptance criteria, and the files each one owns or must not touch.</span></div>
+      <div class="f"><code>docs/codex/design-spec.md</code><span>The UI system as plain markdown: tokens, status vocabulary, controls, keymap, menus, screen and dialog specs. No task has to parse this report.</span></div>
+      <div class="f"><code>docs/codex/config.toml</code><span>Four Codex profiles, one per tier, so a task selects its model and effort with <code>--profile astra</code>.</span></div>
+      <div class="f"><code>docs/codex/run-plan.sh</code><span>The driver: runs phases in order, fans parallel tasks into worktrees, stops at the gates, and runs the end-of-phase review. <code>DRY_RUN=1</code> prints without running.</span></div>
+      <div class="f"><code>docs/codex/README.md</code><span>The mapping table, the porting notes, the order diagram and the collision rules.</span></div>
+    </div>
+
+    <h4 style="margin-top:12px">Running it</h4>
+    <div class="promptbox">
+      <div class="pbh">Quick start<span class="sp"></span><button id="copyCodex" type="button">Copy</button></div>
+      <pre id="codexText">cd VideoPlayerAutoSubs
+cp docs/codex/config.toml ~/.codex/config.toml     # or merge the [profiles] blocks
+npm install
+
+./docs/codex/run-plan.sh list                      # the task table
+DRY_RUN=1 ./docs/codex/run-plan.sh phase1          # see what would run
+./docs/codex/run-plan.sh phase1                    # spike + 3 tasks in worktrees, then the gate
+./docs/codex/run-plan.sh task 2.2                  # a single task
+./docs/codex/run-plan.sh review 2                  # end-of-phase review pass</pre>
+    </div>
+  </div>
+</section>
+
+</main>
+</div>
+
+<script>
+(function () {
+  // scrollspy
+  var links = Array.prototype.slice.call(document.querySelectorAll('#rail a'));
+  var secs = links.map(function (a) { return document.querySelector(a.getAttribute('href')); });
+  function spy() {
+    var y = window.scrollY + 120, cur = 0;
+    secs.forEach(function (s, i) { if (s && s.offsetTop <= y) cur = i; });
+    links.forEach(function (a, i) { a.classList.toggle('active', i === cur); });
+  }
+  window.addEventListener('scroll', spy, { passive: true }); spy();
+
+  // severity filter
+  var findings = Array.prototype.slice.call(document.querySelectorAll('#findings .finding'));
+  var fbtns = Array.prototype.slice.call(document.querySelectorAll('#sevFilters button'));
+  var cnt = document.getElementById('sevCount');
+  function applySev(sev) {
+    var n = 0;
+    findings.forEach(function (f) { var show = sev === 'all' || f.dataset.sev === sev; f.hidden = !show; if (show) n++; });
+    fbtns.forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.sev === sev)); });
+    cnt.textContent = n + ' of ' + findings.length + ' shown';
+  }
+  fbtns.forEach(function (b) { b.addEventListener('click', function () { applySev(b.dataset.sev); }); });
+  applySev('all');
+
+  // flow stepper
+  var sbtns = Array.prototype.slice.call(document.querySelectorAll('#steps button'));
+  var sbodies = Array.prototype.slice.call(document.querySelectorAll('.step-body'));
+  sbtns.forEach(function (b) { b.addEventListener('click', function () {
+    sbtns.forEach(function (x) { x.setAttribute('aria-selected', String(x === b)); });
+    sbodies.forEach(function (x) { x.hidden = x.dataset.step !== b.dataset.step; });
+  }); });
+
+  // screen tabs
+  var tbtns = Array.prototype.slice.call(document.querySelectorAll('#screenTabs button'));
+  var screens = Array.prototype.slice.call(document.querySelectorAll('.screen'));
+  tbtns.forEach(function (b) { b.addEventListener('click', function () {
+    tbtns.forEach(function (x) { x.setAttribute('aria-selected', String(x === b)); });
+    screens.forEach(function (x) { x.hidden = x.dataset.screen !== b.dataset.screen; });
+  }); });
+
+  function wireCopy(btnId, preId) {
+    var cp = document.getElementById(btnId);
+    if (!cp) return;
+    cp.addEventListener('click', function () {
+      var t = document.getElementById(preId);
+      if (!t) return;
+      var done = function () { cp.textContent = 'Copied'; setTimeout(function () { cp.textContent = 'Copy'; }, 1600); };
+      var fail = function () { cp.textContent = 'Select and copy'; setTimeout(function () { cp.textContent = 'Copy'; }, 2200); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t.textContent).then(done, fail);
+      else fail();
+    });
+  }
+  wireCopy('copyPrompt', 'promptText');
+  wireCopy('copyCodex', 'codexText');
+
+  // generic toggle groups
+  var state = { controls: 'on', submode: 'he', prep: 'ready', panel: 'subs', spage: 'translation' };
+  function render() {
+    var hover = document.getElementById('hoverCtrls'), transport = document.getElementById('transportBar');
+    if (hover) { hover.classList.toggle('off', state.controls === 'off'); hover.parentElement.classList.toggle('ctrls-on', state.controls !== 'off'); }
+    if (transport) transport.classList.toggle('off', state.controls === 'off');
+    var cue = document.getElementById('cueMock'), subBtn = document.getElementById('subBtn');
+    if (cue) {
+      cue.hidden = state.submode === 'off';
+      cue.classList.toggle('hidden-src', state.submode === 'he' && state.prep === 'ready');
+      var he = cue.firstChild;
+      if (state.prep === 'prep') { he.textContent = ''; cue.classList.remove('hidden-src'); }
+      else he.textContent = 'את בטוחה שזה הוא?';
+    }
+    if (subBtn) subBtn.textContent = 'Subs · ' + ({ he: 'Hebrew', both: 'Both', off: 'Off' })[state.submode] + ' ▾';
+    var pp = document.getElementById('prepPill'), rp = document.getElementById('runwayPill');
+    if (pp) pp.hidden = state.prep !== 'prep';
+    if (rp) rp.hidden = true;
+    var ps = document.getElementById('panelSubs'), pc = document.getElementById('panelCast');
+    if (ps) ps.hidden = state.panel !== 'subs';
+    if (pc) pc.hidden = state.panel !== 'cast';
+    ['translation', 'subtitles', 'engines'].forEach(function (p) {
+      var el = document.getElementById('sp-' + p); if (el) el.hidden = state.spage !== p;
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('#settingsNav div[data-p]'), function (d) { d.classList.toggle('on', d.dataset.p === state.spage); });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.toggles .grp'), function (g) {
+    var key = g.dataset.toggle;
+    Array.prototype.forEach.call(g.querySelectorAll('button'), function (b) {
+      b.addEventListener('click', function () {
+        state[key] = b.dataset.v;
+        Array.prototype.forEach.call(g.querySelectorAll('button'), function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+        render();
+      });
+    });
+  });
+  render();
+})();
+</script>

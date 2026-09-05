@@ -102,10 +102,14 @@ func processCommand(_ args: [String]) async {
         } else {
             // Production path: drive the SAME SubtitlePipeline the daemon uses.
             await server?.stop() // the pipeline owns its own warm llama-server
+            let strategy = TranslationStrategy(wire: optionValue(args, "--strategy"))
+            err("[process] strategy: \(strategy.rawValue)")
             let pipeline = SubtitlePipeline(modelPaths: modelPaths)
-            let result = try await pipeline.run(videoPath: videoPath, targetLang: target) { p, stage in
-                err("[process] \(stage) \(String(format: "%.0f%%", p * 100))")
-            }
+            let result = try await pipeline.run(
+                videoPath: videoPath, targetLang: target, strategy: strategy,
+                onProgress: { p, stage in err("[process] \(stage) \(String(format: "%.0f%%", p * 100))") },
+                onDraftReady: { draft in err("[process] DRAFT READY (watchable) → \(draft)") }
+            )
             await pipeline.shutdown()
             err("[process] wrote \(result.cueCount) cues → \(result.sidecarPath)")
             if let text = try? String(contentsOfFile: result.sidecarPath, encoding: .utf8) {
@@ -123,6 +127,174 @@ func processCommand(_ args: [String]) async {
 func optionValue(_ args: [String], _ name: String) -> String? {
     guard let i = args.firstIndex(of: name), i + 1 < args.count else { return nil }
     return args[i + 1]
+}
+
+// MARK: - benchmark
+
+func benchmarkCommand(_ args: [String]) async {
+    let srtPath = optionValue(args, "--srt")
+    let videoPath = args.first(where: { !$0.hasPrefix("--") })
+    guard srtPath != nil || videoPath != nil else {
+        err("""
+        usage: AutoSubEngine benchmark (<video> | --srt <file.srt>) \
+        [--target he] [--duration 300] [--scene-lines 24] [--scene-chars 2400] \
+        [--approaches legacy,fused-json,lean]
+        """)
+        exit(EXIT_FAILURE)
+    }
+    let target = optionValue(args, "--target") ?? "he"
+    let duration = optionValue(args, "--duration").flatMap(Int.init) ?? 300
+    let sceneLines = optionValue(args, "--scene-lines").flatMap(Int.init) ?? 24
+    let sceneChars = optionValue(args, "--scene-chars").flatMap(Int.init) ?? 2_400
+    let approaches = optionValue(args, "--approaches")?
+        .split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
+    let modelURL = optionValue(args, "--model").map { URL(fileURLWithPath: $0) }
+    let modelPaths = resolveModels()
+
+    do {
+        let report: TranslationBenchmarkReport
+        if let srtPath {
+            report = try await TranslationBenchmark.runFromSRT(
+                srtPath: srtPath, targetLang: target, modelPaths: modelPaths,
+                sceneMaxLines: sceneLines, sceneMaxSourceChars: sceneChars,
+                approaches: approaches, modelURL: modelURL)
+        } else {
+            report = try await TranslationBenchmark.run(
+                videoPath: videoPath!, targetLang: target, durationSeconds: duration,
+                modelPaths: modelPaths, sceneMaxLines: sceneLines,
+                sceneMaxSourceChars: sceneChars, approaches: approaches, modelURL: modelURL)
+        }
+        let data = try JSONEncoder.prettySorted.encode(report)
+        print(String(decoding: data, as: UTF8.self))
+        err("[benchmark] decode wall: \(String(format: "%.1f", report.decodeProbeTokensPerSecond)) tok/s")
+        for a in report.approaches.sorted(by: { $0.projectedSecondsFor30Min < $1.projectedSecondsFor30Min }) {
+            let mark = a.meets7MinTarget ? "✓" : "✗"
+            err(String(format: "[benchmark] %-11@ 30-min≈%5.1fmin %@  out=%d tok  cover=%.0f%%",
+                       a.name as NSString, a.projectedSecondsFor30Min / 60, mark as NSString,
+                       a.completionTokens, a.coverage * 100))
+        }
+        for (name, sp) in report.speedupVsLegacy.sorted(by: { $0.value > $1.value }) {
+            err("[benchmark] \(name): \(String(format: "%.2fx", sp)) vs legacy")
+        }
+    } catch {
+        err("[benchmark] failed: \(error)")
+        exit(EXIT_FAILURE)
+    }
+}
+
+private extension JSONEncoder {
+    static var prettySorted: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return encoder
+    }
+}
+
+// MARK: - gender-gate
+
+func genderGateCommand(_ args: [String]) async {
+    let target = optionValue(args, "--target") ?? "he"
+    let approaches = optionValue(args, "--approaches")?
+        .split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
+    let modelURL = optionValue(args, "--model").map { URL(fileURLWithPath: $0) }
+    let modelPaths = resolveModels()
+    do {
+        let results = try await TranslationBenchmark.runGenderGate(
+            modelPaths: modelPaths, targetLang: target, approaches: approaches, modelURL: modelURL)
+        let data = try JSONEncoder.prettySorted.encode(results)
+        print(String(decoding: data, as: UTF8.self))
+        for r in results {
+            err(String(format: "[gender-gate] %-11@ %d/%d correct (%.0f%%)",
+                       r.approach as NSString, r.correct, r.total, r.accuracy * 100))
+            for f in r.failures { err("    ✗ \(f)") }
+        }
+    } catch {
+        err("[gender-gate] failed: \(error)")
+        exit(EXIT_FAILURE)
+    }
+}
+
+// MARK: - tiered (12B attribution + fast translation model)
+
+func tieredCommand(_ args: [String]) async {
+    guard let srtPath = optionValue(args, "--srt"),
+          let transModel = optionValue(args, "--translate-model") else {
+        err("usage: AutoSubEngine tiered --srt <file.srt> --translate-model <gguf> [--model <attr-gguf>] [--target he]")
+        exit(EXIT_FAILURE)
+    }
+    let target = optionValue(args, "--target") ?? "he"
+    let attrModel = optionValue(args, "--model").map { URL(fileURLWithPath: $0) }
+    let transURL = URL(fileURLWithPath: transModel)
+    let modelPaths = resolveModels()
+    do {
+        err("[tiered] gender gate …")
+        let gate = try await TranslationBenchmark.runTieredGenderGate(
+            modelPaths: modelPaths, targetLang: target,
+            attributionModelURL: attrModel, translationModelURL: transURL)
+        err(String(format: "[tiered] gender-gate %d/%d correct (%.0f%%)",
+                   gate.correct, gate.total, gate.accuracy * 100))
+        for f in gate.failures { err("    ✗ \(f)") }
+
+        err("[tiered] full benchmark …")
+        let report = try await TranslationBenchmark.runTieredFromSRT(
+            srtPath: srtPath, targetLang: target, modelPaths: modelPaths,
+            attributionModelURL: attrModel, translationModelURL: transURL)
+        print(String(decoding: try JSONEncoder.prettySorted.encode(report), as: UTF8.self))
+        if let a = report.approaches.first {
+            let mark = a.meets7MinTarget ? "✓" : "✗"
+            err(String(format: "[tiered] 30-min≈%.1fmin %@ (attr %@min + trans %@min) cover=%.0f%%",
+                       a.projectedSecondsFor30Min / 60, mark,
+                       a.notes["attr_proj30_min"] ?? "?", a.notes["trans_proj30_min"] ?? "?",
+                       a.coverage * 100))
+        }
+    } catch {
+        err("[tiered] failed: \(error)")
+        exit(EXIT_FAILURE)
+    }
+}
+
+// MARK: - refine (two-pass: fast translate → flag → strong gender fix)
+
+func refineCommand(_ args: [String]) async {
+    guard let srtPath = optionValue(args, "--srt"),
+          let fastModel = optionValue(args, "--fast-model") else {
+        err("usage: AutoSubEngine refine --srt <file.srt> --fast-model <7B.gguf> [--model <strong-gguf>] [--target he]")
+        exit(EXIT_FAILURE)
+    }
+    let target = optionValue(args, "--target") ?? "he"
+    let strongModel = optionValue(args, "--model").map { URL(fileURLWithPath: $0) }
+    let fastURL = URL(fileURLWithPath: fastModel)
+    let dumpPath = optionValue(args, "--dump")
+    let skipGate = args.contains("--no-gate")
+    let modelPaths = resolveModels()
+    do {
+        if !skipGate {
+        err("[refine] gender gate …")
+        let gate = try await TranslationBenchmark.runRefineGenderGate(
+            modelPaths: modelPaths, targetLang: target,
+            strongModelURL: strongModel, fastModelURL: fastURL)
+        err(String(format: "[refine] gender-gate %d/%d correct (%.0f%%)",
+                   gate.correct, gate.total, gate.accuracy * 100))
+        for f in gate.failures { err("    ✗ \(f)") }
+        }
+
+        err("[refine] full benchmark …")
+        let report = try await TranslationBenchmark.runRefineFromSRT(
+            srtPath: srtPath, targetLang: target, modelPaths: modelPaths,
+            strongModelURL: strongModel, fastModelURL: fastURL, dumpPath: dumpPath)
+        print(String(decoding: try JSONEncoder.prettySorted.encode(report), as: UTF8.self))
+        if let a = report.approaches.first {
+            let mark = a.meets7MinTarget ? "✓" : "✗"
+            err(String(format: "[refine] 30-min≈%.1fmin %@  (pass1 %@min + pass2 %@min)  flagged=%@%% corrected=%@ cover=%.0f%%",
+                       a.projectedSecondsFor30Min / 60, mark,
+                       a.notes["pass1_proj30_min"] ?? "?", a.notes["pass2_proj30_min"] ?? "?",
+                       a.notes["flagged_pct"] ?? "?", a.notes["corrected_lines"] ?? "?",
+                       a.coverage * 100))
+        }
+    } catch {
+        err("[refine] failed: \(error)")
+        exit(EXIT_FAILURE)
+    }
 }
 
 // MARK: - daemon
@@ -164,6 +336,14 @@ let argv = Array(CommandLine.arguments.dropFirst())
 switch argv.first {
 case "process":
     await processCommand(Array(argv.dropFirst()))
+case "benchmark":
+    await benchmarkCommand(Array(argv.dropFirst()))
+case "gender-gate":
+    await genderGateCommand(Array(argv.dropFirst()))
+case "tiered":
+    await tieredCommand(Array(argv.dropFirst()))
+case "refine":
+    await refineCommand(Array(argv.dropFirst()))
 default:
     daemonCommand()
 }

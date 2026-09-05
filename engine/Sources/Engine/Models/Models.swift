@@ -25,7 +25,9 @@ public enum SubtitleFormat: String, Codable, Sendable {
 }
 
 public enum SubtitleSource: String, Codable, Sendable {
-    case embedded, asr
+    /// `online` = a source-language subtitle fetched from an online provider
+    /// and handed to the engine as a sidecar file to translate.
+    case embedded, online, asr
 }
 
 public enum JobState: String, Codable, Sendable {

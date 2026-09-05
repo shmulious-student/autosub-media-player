@@ -270,13 +270,27 @@ public actor SubtitlePipeline {
             return (fetched, Self.languageFromSourceSidecar(sp))
         }
 
-        if sourceSubtitleOverride, let fetched = fetchedSource() {
+        let checkpointStore = PipelineCheckpointStore()
+        if force {
+            checkpointStore.remove(videoPath: videoPath, targetLang: targetLang)
+        }
+
+        if !force, let cp = checkpointStore.load(videoPath: videoPath, targetLang: targetLang), !cp.cues.isEmpty {
+            onProgress(0.45, "asr-cached")
+            cues = cp.cues
+            source = cp.source
+            sourceLang = cp.sourceLang
+            sourceQaFlags = cp.sourceQaFlags
+        } else if sourceSubtitleOverride, let fetched = fetchedSource() {
             // User-supplied source file/URL: respect the explicit override even when
             // the container also has a text track.
             onProgress(0.20, "manual-sub")
             cues = fetched.cues
             source = .online
             sourceLang = fetched.lang
+            checkpointStore.save(PipelineCheckpoint(
+                videoPath: videoPath, targetLang: targetLang, source: source,
+                sourceLang: sourceLang, sourceQaFlags: sourceQaFlags, cues: cues))
         } else if let track = try? extractor.bestTextTrack(
                videoPath: videoPath, targetLang: targetLang, originalLang: originalHint),
            let embedded = try? extractor.extractCues(videoPath: videoPath, trackIndex: track.index),
@@ -285,6 +299,9 @@ public actor SubtitlePipeline {
             cues = embedded
             source = .embedded
             sourceLang = track.language
+            checkpointStore.save(PipelineCheckpoint(
+                videoPath: videoPath, targetLang: targetLang, source: source,
+                sourceLang: sourceLang, sourceQaFlags: sourceQaFlags, cues: cues))
         } else if let fetched = fetchedSource() {
             // A source-language subtitle the app fetched online: exact
             // dialogue + timing, no ASR pass. The original language is encoded in the
@@ -293,6 +310,9 @@ public actor SubtitlePipeline {
             cues = fetched.cues
             source = .online
             sourceLang = fetched.lang
+            checkpointStore.save(PipelineCheckpoint(
+                videoPath: videoPath, targetLang: targetLang, source: source,
+                sourceLang: sourceLang, sourceQaFlags: sourceQaFlags, cues: cues))
         } else {
             onProgress(0.02, "decode")
             let decoded = try AudioDecoder().decode(videoPath: videoPath)
@@ -324,6 +344,9 @@ public actor SubtitlePipeline {
             cues = validated.cues
             sourceQaFlags = validated.qaFlags
             sourceLang = asr.language
+            checkpointStore.save(PipelineCheckpoint(
+                videoPath: videoPath, targetLang: targetLang, source: source,
+                sourceLang: sourceLang, sourceQaFlags: sourceQaFlags, cues: cues))
         }
 
         // 1b. SYNC an EXTERNALLY-SOURCED subtitle to THIS release.
@@ -456,7 +479,10 @@ public actor SubtitlePipeline {
             let out = try await ScenePacketTranslator(chat: chat, format: .lean, sourceLang: sourceLang, nameGlossary: nameGlossary).translate(
                 packets: packets, targetLang: targetLang, knownCharacters: glossary,
                 cached: cachedTranslations,
-                onProgress: { frac in onProgress(0.55 + 0.40 * frac, "translate") })
+                onProgress: { frac in onProgress(0.55 + 0.40 * frac, "translate") },
+                onPacketTranslated: { newTranslations in
+                    rememberTranslations(newTranslations)
+                })
             qaFlags = out.stats.qaFlags
             rememberTranslations(out.translationsByCueIndex)
             onProgress(0.97, "assemble")
@@ -469,7 +495,10 @@ public actor SubtitlePipeline {
             let pass1 = try await ScenePacketTranslator(chat: fast, format: .lean, sourceLang: sourceLang, nameGlossary: nameGlossary).translate(
                 packets: packets, targetLang: targetLang, knownCharacters: glossary,
                 cached: cachedTranslations,
-                onProgress: { frac in onProgress(0.45 + 0.25 * frac, "translate") })
+                onProgress: { frac in onProgress(0.45 + 0.25 * frac, "translate") },
+                onPacketTranslated: { newTranslations in
+                    rememberTranslations(newTranslations)
+                })
             qaFlags = pass1.stats.qaFlags
             let draftPath = try applyAndWrite(pass1.translationsByCueIndex)
             onDraftReady(draftPath)
@@ -488,6 +517,8 @@ public actor SubtitlePipeline {
                         sourceLines: packet.lines, pass1Hebrew: pass1He, flaggedLocals: flagged,
                         targetLang: targetLang, knownCharacters: glossary, chat: strong)
                     for (local0, text) in fixes { final[packet.cueIndices[local0]] = text }
+                    // Incrementally persist refined lines so partial refinement survives restarts
+                    rememberTranslations(fixes)
                 }
                 onProgress(0.70 + 0.27 * Double(i + 1) / Double(total), "refine")
             }
@@ -498,6 +529,7 @@ public actor SubtitlePipeline {
             path = try applyAndWrite(final)
         }
 
+        checkpointStore.remove(videoPath: videoPath, targetLang: targetLang)
         onProgress(1.0, "done")
         return SubtitleJobResult(
             sidecarPath: path,

@@ -40,6 +40,7 @@ public enum SceneSynopsis {
             } else if let text = try? await summarize(lines: lines, chat: chat), !text.isEmpty {
                 out[i] = text
                 cache?.store(text, for: key)
+                cache?.flush()
             }
             onProgress(Double(i + 1) / Double(total))
         }
@@ -109,6 +110,7 @@ public final class SceneSynopsisCache: @unchecked Sendable {
     static let fileName = ".autosub-scenes.json"
 
     private let url: URL
+    private let fallbackUrl: URL
     private var map: [String: String]
     private var dirty = false
     private let lock = NSLock()
@@ -116,9 +118,21 @@ public final class SceneSynopsisCache: @unchecked Sendable {
     public init(videoPath: String) {
         self.url = URL(fileURLWithPath: videoPath).deletingLastPathComponent()
             .appendingPathComponent(Self.fileName)
-        let all = Self.readAll(url)
-        self.map = all[Self.videoKey(videoPath)] ?? [:]
+        let baseDir: URL
+        if let appSupport = try? FileManager.default.url(
+            for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) {
+            baseDir = appSupport.appendingPathComponent("AutoSub/cache", isDirectory: true)
+        } else {
+            baseDir = FileManager.default.temporaryDirectory.appendingPathComponent("autosub-cache", isDirectory: true)
+        }
+        try? FileManager.default.createDirectory(at: baseDir, withIntermediateDirectories: true)
+        self.fallbackUrl = baseDir.appendingPathComponent(Self.fileName)
         self.videoKey = Self.videoKey(videoPath)
+
+        var combined = Self.readAll(fallbackUrl)[self.videoKey] ?? [:]
+        let primary = Self.readAll(url)[self.videoKey] ?? [:]
+        combined.merge(primary) { _, p in p }
+        self.map = combined
     }
 
     private let videoKey: String
@@ -134,14 +148,22 @@ public final class SceneSynopsisCache: @unchecked Sendable {
         dirty = true
     }
 
-    /// Write back once at the end of a run (never per scene).
+    /// Write back atomically.
     public func flush() {
         lock.lock(); defer { lock.unlock() }
         guard dirty, !map.isEmpty else { return }
         var all = Self.readAll(url)
         all[videoKey] = map
         if let data = try? JSONSerialization.data(withJSONObject: all, options: [.sortedKeys]) {
-            try? data.write(to: url, options: .atomic)
+            do {
+                try data.write(to: url, options: .atomic)
+            } catch {
+                var fallbackAll = Self.readAll(fallbackUrl)
+                fallbackAll[videoKey] = map
+                if let fbData = try? JSONSerialization.data(withJSONObject: fallbackAll, options: [.sortedKeys]) {
+                    try? fbData.write(to: fallbackUrl, options: .atomic)
+                }
+            }
         }
         dirty = false
     }

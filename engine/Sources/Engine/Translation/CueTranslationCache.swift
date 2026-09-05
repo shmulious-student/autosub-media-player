@@ -28,13 +28,27 @@ public struct CueTranslationCache: Sendable {
     /// cacheKey → translated line.
     private var entries: [String: String]
     private let url: URL
+    private let fallbackUrl: URL
     private let videoKey: String
 
     public init(videoPath: String) {
         self.url = URL(fileURLWithPath: videoPath).deletingLastPathComponent()
             .appendingPathComponent(Self.fileName)
+        let baseDir: URL
+        if let appSupport = try? FileManager.default.url(
+            for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) {
+            baseDir = appSupport.appendingPathComponent("AutoSub/cache", isDirectory: true)
+        } else {
+            baseDir = FileManager.default.temporaryDirectory.appendingPathComponent("autosub-cache", isDirectory: true)
+        }
+        try? FileManager.default.createDirectory(at: baseDir, withIntermediateDirectories: true)
+        self.fallbackUrl = baseDir.appendingPathComponent(Self.fileName)
         self.videoKey = URL(fileURLWithPath: videoPath).lastPathComponent
-        self.entries = Self.readAll(url)[self.videoKey] ?? [:]
+
+        var combined = Self.readAll(fallbackUrl)[self.videoKey] ?? [:]
+        let primary = Self.readAll(url)[self.videoKey] ?? [:]
+        combined.merge(primary) { _, p in p }
+        self.entries = combined
     }
 
     static let fileName = ".autosub-translations.json"
@@ -57,7 +71,15 @@ public struct CueTranslationCache: Sendable {
         var all = Self.readAll(url)
         all[videoKey] = pruned
         if let data = try? JSONSerialization.data(withJSONObject: all, options: [.sortedKeys]) {
-            try? data.write(to: url, options: .atomic)
+            do {
+                try data.write(to: url, options: .atomic)
+            } catch {
+                var fallbackAll = Self.readAll(fallbackUrl)
+                fallbackAll[videoKey] = pruned
+                if let fbData = try? JSONSerialization.data(withJSONObject: fallbackAll, options: [.sortedKeys]) {
+                    try? fbData.write(to: fallbackUrl, options: .atomic)
+                }
+            }
         }
     }
 

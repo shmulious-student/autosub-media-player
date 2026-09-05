@@ -199,7 +199,8 @@ public struct ScenePacketTranslator: Sendable {
         targetLang: String,
         knownCharacters: [String: String] = [:],
         cached: [Int: String] = [:],
-        onProgress: @Sendable (Double) -> Void = { _ in }
+        onProgress: @Sendable (Double) -> Void = { _ in },
+        onPacketTranslated: (@Sendable ([Int: String]) -> Void)? = nil
     ) async throws -> ScenePacketTranslationOutput {
         var translations: [Int: String] = [:]
         var stats = ScenePacketTranslationStats()
@@ -225,6 +226,7 @@ public struct ScenePacketTranslator: Sendable {
                 stats: &stats
             )
             translations.merge(result) { current, _ in current }
+            onPacketTranslated?(result)
             onProgress(Double(i + 1) / Double(total))
         }
         return ScenePacketTranslationOutput(translationsByCueIndex: translations, stats: stats)

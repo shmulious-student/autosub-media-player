@@ -1,6 +1,10 @@
 // PlaybackProgressStore — resuming has to feel right, which is mostly about the
 // two thresholds: don't resume from the first minute, and don't resume into the
 // end credits.
+//
+// The store also carries the per-title subtitle offset, whose whole point is
+// surviving the session — so the interesting cases are the two ways it could be
+// silently lost: a position recorded on top of it, and a reopened store.
 
 import 'dart:io';
 
@@ -97,6 +101,45 @@ void main() {
           const Duration(minutes: 90));
 
       expect(store.continueWatching(), ['/films/new.mkv', '/films/old.mkv']);
+    });
+  });
+
+  group('subtitle delay', () {
+    test('is remembered per title and survives a reopen', () async {
+      final dir = Directory.systemTemp.createTempSync('delay');
+      addTearDown(() => dir.deleteSync(recursive: true));
+
+      final store = PlaybackProgressStore(directory: dir);
+      store.recordSubtitleDelay('/movies/dune.mkv', -250);
+      await store.flush();
+
+      final reopened = PlaybackProgressStore(directory: dir);
+      await reopened.load();
+      expect(reopened.subtitleDelayFor('/movies/dune.mkv'), -250);
+      expect(reopened.subtitleDelayFor('/movies/other.mkv'), 0);
+    });
+
+    test('a recorded position does not wipe the offset', () async {
+      final dir = Directory.systemTemp.createTempSync('delay');
+      addTearDown(() => dir.deleteSync(recursive: true));
+
+      final store = PlaybackProgressStore(directory: dir);
+      store.recordSubtitleDelay('/movies/dune.mkv', 300);
+      store.record('/movies/dune.mkv', const Duration(minutes: 12),
+          const Duration(minutes: 90));
+
+      expect(store.subtitleDelayFor('/movies/dune.mkv'), 300);
+      expect(store.progressFor('/movies/dune.mkv')?.position,
+          const Duration(minutes: 12));
+    });
+
+    test('an offset set before any playback does not fake a resume point', () {
+      final store = PlaybackProgressStore(
+          directory: Directory.systemTemp.createTempSync('delay'));
+      store.recordSubtitleDelay('/movies/dune.mkv', 120);
+      // Nudging the sync in the first seconds must not put the title into
+      // "continue watching" — nothing has been watched yet.
+      expect(store.continueWatching(), isEmpty);
     });
   });
 }

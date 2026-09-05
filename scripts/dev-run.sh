@@ -24,6 +24,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 export AUTOSUB_MODELS="${AUTOSUB_MODELS:-/Volumes/EP2TB/autosub-models}"
+export AUTOSUB_DATA_DIR="${AUTOSUB_DATA_DIR:-$HOME/.autosub}"
 export HF_HOME="${HF_HOME:-$AUTOSUB_MODELS/hf-cache}"
 export HUGGINGFACE_HUB_CACHE="${HUGGINGFACE_HUB_CACHE:-$AUTOSUB_MODELS/hf-cache}"
 

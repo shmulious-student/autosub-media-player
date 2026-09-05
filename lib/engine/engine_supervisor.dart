@@ -11,6 +11,8 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import '../common/app_paths.dart';
+
 class EngineSupervisor {
   EngineSupervisor({
     this.modelsDir = '/Volumes/EP2TB/autosub-models',
@@ -66,7 +68,10 @@ class EngineSupervisor {
       return;
     }
     try {
-      final env = <String, String>{'AUTOSUB_MODELS': modelsDir};
+      final env = <String, String>{
+        'AUTOSUB_MODELS': modelsDir,
+        'AUTOSUB_DATA_DIR': AutoSubPaths.dataDirectoryPath(),
+      };
       if (cloudEnv != null) {
         env.addAll(cloudEnv!());
       }

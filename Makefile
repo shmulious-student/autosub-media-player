@@ -5,6 +5,7 @@
 # Source these before any model download or engine run.
 
 export AUTOSUB_MODELS ?= /Volumes/EP2TB/autosub-models
+export AUTOSUB_DATA_DIR ?= $(HOME)/.autosub
 export HF_HOME        ?= $(AUTOSUB_MODELS)/hf-cache
 export HUGGINGFACE_HUB_CACHE ?= $(AUTOSUB_MODELS)/hf-cache
 export OLLAMA_MODELS  ?= $(AUTOSUB_MODELS)/ollama

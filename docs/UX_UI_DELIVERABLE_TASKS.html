@@ -56,6 +56,7 @@ td.num,th.num{text-align:right;font-family:var(--mono);white-space:nowrap}
 .p2{background:var(--purple-bg);color:var(--purple)}
 .s-done{background:var(--ok-bg);color:var(--ok)} .s-part{background:var(--info-bg);color:var(--info)}
 .s-new{background:rgba(255,255,255,.06);color:var(--t2)}
+.s-def{background:rgba(255,255,255,.06);color:var(--t3);border:1px solid var(--line2)}
 .bar{height:6px;background:rgba(255,255,255,.07);border-radius:999px;overflow:hidden;min-width:90px;margin-top:6px}
 .bar i{display:block;height:100%;background:linear-gradient(90deg,#E8A33D,#F5B04C)}
 .grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:20px}
@@ -141,8 +142,22 @@ footer{border-top:1px solid var(--line);margin-top:50px;padding-top:20px;color:v
 <div class="winbox"><div class="h">Windows needed</div><div class="b">≈ 1.0</div></div>
 <div class="winbox"><div class="h">Saved by prior work</div><div class="b">~45%</div></div></div>
 
-<h3 class="sec">Sprint 3 — Waveform Studio, Bible 2.0, Command Palette <span class="tag p1">P1</span></h3>
-<p class="sub">The heaviest sprint. The waveform track and the relationship matrix are both new subsystems, not refinements — each needs an engine-side data path in addition to the Flutter surface.</p>
+<h3 class="sec">Sprint 3 — Ecosystem &amp; Platform Citizenship <span class="tag p2">P2</span></h3>
+<p class="sub">Interoperability and macOS-native behaviour. Lower delight per token than Sprints 1–3, but T‑25 is the single feature most likely to move AutoSub into a living room.</p>
+<div class="scroll"><table>
+<thead><tr><th>ID</th><th>Task</th><th>Touches</th><th>Status</th><th class="num">Cost</th></tr></thead>
+<tbody>
+<tr><td class="id">T‑25</td><td><b>Lossless MKV remux export</b><div class="small">Inject the subtitle track via libav/mkvmerge with no re-encode; Infuse/Plex/Apple&nbsp;TV ready.</div></td><td class="mono small">subtitle_export.dart, EngineSidecar</td><td><span class="tag s-part">Partial</span><div class="small">SRT/ASS export shipped (cdf9879)</div></td><td class="num">23%<div class="bar"><i style="width:23%"></i></div></td></tr>
+<tr><td class="id">T‑26</td><td><b>TMDB disambiguation carousel + edition stacking</b><div class="small">Poster-comparison picker; collapse 4K/1080p duplicates into one card.</div></td><td class="mono small">fix_match_dialog.dart, library_grouping.dart</td><td><span class="tag s-part">Partial</span><div class="small">Fix-match dialog + grouping exist</div></td><td class="num">19%<div class="bar"><i style="width:19%"></i></div></td></tr>
+<tr><td class="id">T‑27</td><td><b>Power &amp; thermal aware scheduler</b><div class="small">Turbo / Quiet / Battery Saver presets, macOS power notifications, auto-yield during playback.</div></td><td class="mono small">processing_manager.dart, engine_supervisor.dart, Hardware/</td><td><span class="tag s-new">New</span></td><td class="num">22%<div class="bar"><i style="width:22%"></i></div></td></tr>
+<tr><td class="id">T‑28</td><td><b>Devices Dock — Bonjour pairing &amp; sync status</b><div class="small">Surface the existing <span class="mono">BonjourSyncProvider</span> in the left rail with per-device state.</div></td><td class="mono small">sync_provider.dart, app_shell.dart</td><td><span class="tag s-part">Partial</span><div class="small">Provider exists, no UI</div></td><td class="num">21%<div class="bar"><i style="width:21%"></i></div></td></tr>
+</tbody></table></div>
+<div class="win"><div class="winbox"><div class="h">Sprint 3 subtotal</div><div class="b">85%</div></div>
+<div class="winbox"><div class="h">Windows needed</div><div class="b">≈ 0.9</div></div>
+<div class="winbox"><div class="h">Defer safely</div><div class="b">T‑28, then T‑26</div></div></div>
+
+<h3 class="sec">Deferred backlog — Waveform Studio, Bible 2.0, Command Palette <span class="tag s-def">Deferred</span></h3>
+<p class="sub" style="border-left:3px solid var(--t3);padding-left:14px"><b style="color:var(--t1)">Deferred by decision — last in the backlog, picked up only after Sprints 1, 2 and 4 land.</b> The heaviest sprint. The waveform track and the relationship matrix are both new subsystems, not refinements — each needs an engine-side data path in addition to the Flutter surface.</p>
 <div class="scroll"><table>
 <thead><tr><th>ID</th><th>Task</th><th>Touches</th><th>Status</th><th class="num">Cost</th></tr></thead>
 <tbody>
@@ -156,23 +171,9 @@ footer{border-top:1px solid var(--line);margin-top:50px;padding-top:20px;color:v
 <tr><td class="id">T‑23</td><td><b>Confidence-weighted TMDB cast auto-population</b></td><td class="mono small">tmdb_client.dart, cast_member.dart</td><td><span class="tag s-part">Partial</span><div class="small">cast fetch exists; no confidence weighting</div></td><td class="num">12%<div class="bar"><i style="width:12%"></i></div></td></tr>
 <tr><td class="id">T‑24</td><td><b>Universal Command Palette (⌘K)</b><div class="small">Fuzzy match over titles, episodes, characters, and queue actions; global shortcut in AppShell.</div></td><td class="mono small">app_shell.dart, library_store.dart</td><td><span class="tag s-new">New</span></td><td class="num">20%<div class="bar"><i style="width:20%"></i></div></td></tr>
 </tbody></table></div>
-<div class="win"><div class="winbox"><div class="h">Sprint 3 subtotal</div><div class="b">170%</div></div>
+<div class="win"><div class="winbox"><div class="h">Backlog subtotal</div><div class="b">170%</div></div>
 <div class="winbox"><div class="h">Windows needed</div><div class="b">≈ 1.7</div></div>
 <div class="winbox"><div class="h">Split point</div><div class="b">T‑16…T‑20 | T‑21…T‑24</div></div></div>
-
-<h3 class="sec">Sprint 4 — Ecosystem &amp; Platform Citizenship <span class="tag p2">P2</span></h3>
-<p class="sub">Interoperability and macOS-native behaviour. Lower delight per token than Sprints 1–3, but T‑25 is the single feature most likely to move AutoSub into a living room.</p>
-<div class="scroll"><table>
-<thead><tr><th>ID</th><th>Task</th><th>Touches</th><th>Status</th><th class="num">Cost</th></tr></thead>
-<tbody>
-<tr><td class="id">T‑25</td><td><b>Lossless MKV remux export</b><div class="small">Inject the subtitle track via libav/mkvmerge with no re-encode; Infuse/Plex/Apple&nbsp;TV ready.</div></td><td class="mono small">subtitle_export.dart, EngineSidecar</td><td><span class="tag s-part">Partial</span><div class="small">SRT/ASS export shipped (cdf9879)</div></td><td class="num">23%<div class="bar"><i style="width:23%"></i></div></td></tr>
-<tr><td class="id">T‑26</td><td><b>TMDB disambiguation carousel + edition stacking</b><div class="small">Poster-comparison picker; collapse 4K/1080p duplicates into one card.</div></td><td class="mono small">fix_match_dialog.dart, library_grouping.dart</td><td><span class="tag s-part">Partial</span><div class="small">Fix-match dialog + grouping exist</div></td><td class="num">19%<div class="bar"><i style="width:19%"></i></div></td></tr>
-<tr><td class="id">T‑27</td><td><b>Power &amp; thermal aware scheduler</b><div class="small">Turbo / Quiet / Battery Saver presets, macOS power notifications, auto-yield during playback.</div></td><td class="mono small">processing_manager.dart, engine_supervisor.dart, Hardware/</td><td><span class="tag s-new">New</span></td><td class="num">22%<div class="bar"><i style="width:22%"></i></div></td></tr>
-<tr><td class="id">T‑28</td><td><b>Devices Dock — Bonjour pairing &amp; sync status</b><div class="small">Surface the existing <span class="mono">BonjourSyncProvider</span> in the left rail with per-device state.</div></td><td class="mono small">sync_provider.dart, app_shell.dart</td><td><span class="tag s-part">Partial</span><div class="small">Provider exists, no UI</div></td><td class="num">21%<div class="bar"><i style="width:21%"></i></div></td></tr>
-</tbody></table></div>
-<div class="win"><div class="winbox"><div class="h">Sprint 4 subtotal</div><div class="b">85%</div></div>
-<div class="winbox"><div class="h">Windows needed</div><div class="b">≈ 0.9</div></div>
-<div class="winbox"><div class="h">Defer safely</div><div class="b">T‑28, then T‑26</div></div></div>
 
 <h3 class="sec">Cross-cutting: Bidi &amp; Design-System compliance</h3>
 <p class="sub">The blueprint's Golden Bidi Rules apply to every task above. Budget this once, not per feature.</p>
@@ -197,13 +198,16 @@ footer{border-top:1px solid var(--line);margin-top:50px;padding-top:20px;color:v
 <tbody>
 <tr><td><b>Sprint 1</b> <span class="tag p0">P0</span></td><td class="mono">T‑01 … T‑08</td><td>Player polish &amp; precision sync</td><td class="num">104%</td><td class="num">1.0</td></tr>
 <tr><td><b>Sprint 2</b> <span class="tag p0">P0</span></td><td class="mono">T‑09 … T‑15</td><td>Cloud Turbo orchestration UX</td><td class="num">96%</td><td class="num">1.0</td></tr>
-<tr><td><b>Sprint 3</b> <span class="tag p1">P1</span></td><td class="mono">T‑16 … T‑24</td><td>Waveform Studio, Bible 2.0, ⌘K</td><td class="num">170%</td><td class="num">1.7</td></tr>
-<tr><td><b>Sprint 4</b> <span class="tag p2">P2</span></td><td class="mono">T‑25 … T‑28</td><td>Ecosystem &amp; macOS citizenship</td><td class="num">85%</td><td class="num">0.9</td></tr>
+<tr><td><b>Sprint 3</b> <span class="tag p2">P2</span></td><td class="mono">T‑25 … T‑28</td><td>Ecosystem &amp; macOS citizenship</td><td class="num">85%</td><td class="num">0.9</td></tr>
+<tr style="opacity:.72"><td><b>Backlog</b> <span class="tag s-def">Deferred</span></td><td class="mono">T‑16 … T‑24</td><td>Waveform Studio, Bible 2.0, ⌘K</td><td class="num">170%</td><td class="num">1.7</td></tr>
 <tr><td><b>Cross-cutting</b></td><td class="mono">Bidi + tokens</td><td>Compliance sweeps</td><td class="num">18%</td><td class="num">0.2</td></tr>
 <tr style="background:#0F131D"><td><b>Total</b></td><td class="mono">28 tasks</td><td>Full blueprint delivery</td><td class="num"><b>473%</b></td><td class="num"><b>≈ 4.8</b></td></tr>
 </tbody></table></div>
 
 <div class="note" style="margin-top:24px">
+  <b>Order of play (decided).</b> Sprint 1 → Sprint 2 → Sprint 3 (ecosystem). The waveform / Bible 2.0 / ⌘K
+  group is deferred to the end of the backlog: it is 170% on its own — more than a third of the total — and nothing
+  in the first three sprints depends on it.<br><br>
   <b>Recommended sequencing.</b> Run one sprint per window and stop at the sprint boundary — starting Sprint 3's waveform
   work with 20% of a window left means paying the exploration cost twice. Within a window, front-load the cheap tasks
   (T‑03, T‑01, T‑06) so a partial window still ships something. The two tasks worth reconsidering on cost-to-value are

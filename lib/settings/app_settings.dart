@@ -9,9 +9,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
+import '../common/app_paths.dart';
 import '../subtitle/subtitle_appearance.dart';
 
 /// Translation strategy the engine should use (SPEC §9). Proven on-device:
@@ -100,6 +99,7 @@ class AppSettings extends ChangeNotifier {
     String cloudflareAccountId = '',
     String cloudflareApiToken = '',
     SubtitleAppearance subtitleAppearance = const SubtitleAppearance(),
+    File? storeFile,
   }) : _targetLanguage = targetLanguage,
        _translationStrategy = translationStrategy,
        _backendEnvironment = backendEnvironment,
@@ -114,7 +114,8 @@ class AppSettings extends ChangeNotifier {
        _geminiApiKey = geminiApiKey,
        _cloudflareAccountId = cloudflareAccountId,
        _cloudflareApiToken = cloudflareApiToken,
-       _subtitleAppearance = subtitleAppearance;
+       _subtitleAppearance = subtitleAppearance,
+       _file = storeFile;
 
   String _targetLanguage;
   TranslationStrategy _translationStrategy;
@@ -228,8 +229,7 @@ class AppSettings extends ChangeNotifier {
 
   Future<File> _storeFile() async {
     if (_file != null) return _file!;
-    final dir = await getApplicationSupportDirectory();
-    return _file = File(p.join(dir.path, 'settings.json'));
+    return _file = AutoSubPaths.settingsFile();
   }
 
   Future<void> load() async {

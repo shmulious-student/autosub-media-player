@@ -1,4 +1,5 @@
-// PlaybackProgressStore — remember where you stopped watching.
+// PlaybackProgressStore — remember where you stopped watching, and how you had
+// the subtitles timed.
 //
 // The translation cache remembers everything about a title and the player
 // remembered nothing: closing an episode and reopening it started from zero. This
@@ -10,6 +11,11 @@
 //     sampling, not watching, and being dropped a minute in feels broken.
 //   - The last 90 seconds count as finished. Resuming into the end credits is
 //     never what anyone wants; the title is marked watched and starts over.
+//
+// The subtitle delay lives here too rather than in a store of its own: it is the
+// same thing — per-title viewing state, keyed by video path, saved while you watch
+// and read when you open. A sidecar that runs 300ms early runs 300ms early every
+// night, so making the viewer re-nudge it on each sitting is the actual bug.
 
 import 'dart:async';
 import 'dart:convert';
@@ -17,7 +23,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
+
+import '../common/app_paths.dart';
 
 /// How far into one title the viewer got.
 class PlaybackProgress {
@@ -25,6 +32,7 @@ class PlaybackProgress {
     required this.position,
     required this.duration,
     required this.updatedAtMs,
+    this.subtitleDelayMs = 0,
   });
 
   final Duration position;
@@ -32,6 +40,10 @@ class PlaybackProgress {
   /// Total media duration, or zero when the player never reported one.
   final Duration duration;
   final int updatedAtMs;
+
+  /// Subtitle timing offset the viewer settled on, in milliseconds (positive =
+  /// subtitles appear later). Survives closing the title.
+  final int subtitleDelayMs;
 
   /// Below this, resuming is more surprising than helpful.
   static const minimumResume = Duration(seconds: 60);
@@ -54,16 +66,31 @@ class PlaybackProgress {
     return (position.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0);
   }
 
+  PlaybackProgress copyWith({
+    Duration? position,
+    Duration? duration,
+    int? updatedAtMs,
+    int? subtitleDelayMs,
+  }) =>
+      PlaybackProgress(
+        position: position ?? this.position,
+        duration: duration ?? this.duration,
+        updatedAtMs: updatedAtMs ?? this.updatedAtMs,
+        subtitleDelayMs: subtitleDelayMs ?? this.subtitleDelayMs,
+      );
+
   Map<String, dynamic> toJson() => {
         'positionMs': position.inMilliseconds,
         'durationMs': duration.inMilliseconds,
         'updatedAtMs': updatedAtMs,
+        if (subtitleDelayMs != 0) 'subtitleDelayMs': subtitleDelayMs,
       };
 
   factory PlaybackProgress.fromJson(Map<String, dynamic> j) => PlaybackProgress(
         position: Duration(milliseconds: (j['positionMs'] as num?)?.toInt() ?? 0),
         duration: Duration(milliseconds: (j['durationMs'] as num?)?.toInt() ?? 0),
         updatedAtMs: (j['updatedAtMs'] as num?)?.toInt() ?? 0,
+        subtitleDelayMs: (j['subtitleDelayMs'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -77,8 +104,10 @@ class PlaybackProgressStore extends ChangeNotifier {
 
   Future<File> _storeFile() async {
     if (_file != null) return _file!;
-    final dir = _directory ?? await getApplicationSupportDirectory();
-    return _file = File(p.join(dir.path, 'playback_progress.json'));
+    if (_directory != null) {
+      return _file = File(p.join(_directory.path, 'playback_progress.json'));
+    }
+    return _file = AutoSubPaths.playbackProgressFile();
   }
 
   Future<void> load() async {
@@ -110,7 +139,30 @@ class PlaybackProgressStore extends ChangeNotifier {
       position: position,
       duration: duration,
       updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+      // A recorded position must never wipe the timing the viewer dialled in.
+      subtitleDelayMs: _byPath[path]?.subtitleDelayMs ?? 0,
     );
+    notifyListeners();
+    _scheduleSave();
+  }
+
+  /// The saved subtitle offset for one title, or 0 when it was never nudged.
+  int subtitleDelayFor(String path) => _byPath[path]?.subtitleDelayMs ?? 0;
+
+  /// Remember the subtitle offset for one title.
+  ///
+  /// Unlike [record] this accepts a title with no watched position yet: someone
+  /// can fix the sync in the first ten seconds, and that fix has to stick.
+  void recordSubtitleDelay(String path, int delayMs) {
+    final existing = _byPath[path];
+    if (existing?.subtitleDelayMs == delayMs) return;
+    _byPath[path] = (existing ??
+            PlaybackProgress(
+              position: Duration.zero,
+              duration: Duration.zero,
+              updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+            ))
+        .copyWith(subtitleDelayMs: delayMs);
     notifyListeners();
     _scheduleSave();
   }

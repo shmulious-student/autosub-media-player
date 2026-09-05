@@ -118,14 +118,7 @@ public final class SceneSynopsisCache: @unchecked Sendable {
     public init(videoPath: String) {
         self.url = URL(fileURLWithPath: videoPath).deletingLastPathComponent()
             .appendingPathComponent(Self.fileName)
-        let baseDir: URL
-        if let appSupport = try? FileManager.default.url(
-            for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) {
-            baseDir = appSupport.appendingPathComponent("AutoSub/cache", isDirectory: true)
-        } else {
-            baseDir = FileManager.default.temporaryDirectory.appendingPathComponent("autosub-cache", isDirectory: true)
-        }
-        try? FileManager.default.createDirectory(at: baseDir, withIntermediateDirectories: true)
+        let baseDir = AutoSubPaths.cacheDirectory
         self.fallbackUrl = baseDir.appendingPathComponent(Self.fileName)
         self.videoKey = Self.videoKey(videoPath)
 

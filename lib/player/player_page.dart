@@ -6,6 +6,11 @@
 // text and transport chrome pinned LTR (RTL.md §2). Full keyboard map per
 // DESIGN_SYSTEM §6.4; ←/→ are always seek-back/forward, never mirrored.
 //
+// Three things here exist because they have to work WHILE watching, not in a
+// settings screen you leave the film for: the subtitle offset (Z/X, persisted per
+// title), the dual-language stack (D), and cue looping (A). Anything that makes
+// the viewer exit fullscreen to fix a 200ms drift has already failed.
+//
 // IMPORTANT (licensing, SPEC §3): media_kit must be the playback-only, LGPL-safe
 // libmpv build. Never enable FFmpeg `--enable-gpl`.
 
@@ -17,9 +22,13 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../library/processing_manager.dart';
+import '../metadata/subtitle_source.dart';
 import '../settings/app_settings.dart';
+import '../subtitle/subtitle_appearance.dart';
 import '../ui/components/toast.dart';
 import '../ui/tokens.dart';
+import 'cue_track.dart';
+import 'dual_subtitle_view.dart';
 import 'playback_progress.dart';
 import 'preparing_pill.dart';
 import 'subtitle_runway.dart';
@@ -79,6 +88,22 @@ class _PlayerPageState extends State<PlayerPage> {
   /// a few hundred ms out against a particular release, and the fix has to be
   /// available WHILE watching — by the time you notice, you are mid-scene.
   int _subDelayMs = 0;
+  bool _delayRestored = false;
+
+  /// The Hebrew cues, parsed alongside the track mpv is rendering. mpv will not
+  /// tell us where the current cue starts and ends, and cue looping is exactly
+  /// that question.
+  CueTrack _cues = const CueTrack.empty();
+
+  /// The original-language cues, when a source sidecar exists — the second line
+  /// of the dual-language stack.
+  CueTrack _secondaryCues = const CueTrack.empty();
+  bool _dualSubOn = false;
+
+  /// While set, playback jumps back to the start of this cue every time it runs
+  /// past the end — the "loop this sentence" study mode.
+  ({Duration start, Duration end})? _loopingCue;
+
   BuildContext? _controlsContext; // captured inside the Video subtree
 
   SubtitleViewConfiguration get _subtitleViewConfiguration {
@@ -127,7 +152,12 @@ class _PlayerPageState extends State<PlayerPage> {
       _runway?.setMediaDuration(d);
       _maybeResume(d);
     });
-    _positionSub = _player.stream.position.listen((pos) => _position = pos);
+    _positionSub = _player.stream.position.listen((pos) {
+      _position = pos;
+      _maybeLoopCue(pos);
+    });
+    _restoreSubtitleDelay();
+    _loadSecondaryCues();
     // Record every 10s rather than on every position tick: the store debounces
     // its writes anyway, and this keeps the resume point fresh if the app is
     // force-quit.
@@ -142,6 +172,39 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   Duration _position = Duration.zero;
+
+  /// Re-apply the offset the viewer settled on last time for this title.
+  ///
+  /// A sidecar that is 300ms early is 300ms early on every sitting, so making
+  /// them re-discover and re-nudge it each time is the actual defect.
+  void _restoreSubtitleDelay() {
+    if (_delayRestored) return;
+    final path = widget.videoPath;
+    final store = widget.progress;
+    if (path == null || store == null) return;
+    _delayRestored = true;
+    final saved = store.subtitleDelayFor(path);
+    if (saved != 0) unawaited(_applySubtitleDelay(saved, announce: false));
+  }
+
+  /// Find the cached original-language sidecar, if the source resolver wrote one.
+  /// Its language is whatever the film was in, so we look for any of them.
+  void _loadSecondaryCues() {
+    final path = widget.videoPath;
+    if (path == null) return;
+    for (final lang in const ['en', 'es', 'fr', 'de', 'it', 'ru', 'ja']) {
+      final found = SourceSubtitleCache.existingPath(
+        videoPath: path,
+        lang: lang,
+      );
+      if (found == null) continue;
+      final track = CueTrack.fromFile(found);
+      if (track.isEmpty) continue;
+      if (!mounted) return;
+      setState(() => _secondaryCues = track);
+      return;
+    }
+  }
 
   /// Seek to the saved position once the duration is known (a resume point is
   /// meaningless until we can tell it from the end of the film).
@@ -185,22 +248,88 @@ class _PlayerPageState extends State<PlayerPage> {
   /// Nudge the subtitle timing. mpv owns `sub-delay` (in seconds, positive = the
   /// subtitle appears later), so we push it straight through rather than
   /// rewriting the cue file.
-  Future<void> _nudgeSubtitleDelay(int deltaMs) async {
-    final next = (_subDelayMs + deltaMs).clamp(-30000, 30000);
-    if (next == _subDelayMs) return;
+  Future<void> _nudgeSubtitleDelay(int deltaMs) =>
+      _applySubtitleDelay(_subDelayMs + deltaMs);
+
+  /// Set the offset to an absolute value, push it to mpv, and remember it.
+  ///
+  /// [announce] is false when restoring a saved offset on open: the viewer chose
+  /// it on a previous sitting and does not need to be told about their own
+  /// setting every time the film starts.
+  Future<void> _applySubtitleDelay(int delayMs, {bool announce = true}) async {
+    final next = delayMs.clamp(-30000, 30000);
+    if (next == _subDelayMs && announce) return;
     _subDelayMs = next;
     final platform = _player.platform;
     if (platform is NativePlayer) {
       await platform.setProperty('sub-delay', (next / 1000).toStringAsFixed(3));
     }
+    final path = widget.videoPath;
+    if (path != null) widget.progress?.recordSubtitleDelay(path, next);
     if (!mounted) return;
     setState(() {});
+    if (!announce) return;
     showToast(
       context,
       next == 0
           ? 'Subtitle delay reset'
           : 'Subtitle delay ${next > 0 ? '+' : ''}$next ms',
     );
+  }
+
+  /// Replay the line currently on screen, and keep replaying it until the viewer
+  /// says otherwise. The second press of the same key releases the loop, so the
+  /// study gesture is one key, not a mode to remember exiting.
+  void _toggleCueLoop() {
+    if (_loopingCue != null) {
+      setState(() => _loopingCue = null);
+      showToast(context, 'Cue loop off');
+      return;
+    }
+    final cue = _cues.cueForReplay(
+      _player.state.position,
+      offset: Duration(milliseconds: _subDelayMs),
+    );
+    if (cue == null) {
+      showToast(context, 'No subtitle line here to loop');
+      return;
+    }
+    final offset = Duration(milliseconds: _subDelayMs);
+    setState(() => _loopingCue = (start: cue.start + offset, end: cue.end + offset));
+    unawaited(_player.seek(cue.start + offset));
+    showToast(context, 'Looping this line — press A again to stop');
+  }
+
+  /// Jump back to the start of the current line once, without looping.
+  void _replayCue() {
+    final cue = _cues.cueForReplay(
+      _player.state.position,
+      offset: Duration(milliseconds: _subDelayMs),
+    );
+    if (cue == null) return;
+    unawaited(_player.seek(cue.start + Duration(milliseconds: _subDelayMs)));
+  }
+
+  /// Called on every position tick: the loop is enforced here rather than with a
+  /// timer so it tracks seeks the viewer makes themselves.
+  void _maybeLoopCue(Duration pos) {
+    final loop = _loopingCue;
+    if (loop == null) return;
+    // A seek well outside the cue is the viewer moving on — drop the loop rather
+    // than yanking them back.
+    if (pos < loop.start - const Duration(seconds: 2)) {
+      if (mounted) setState(() => _loopingCue = null);
+      return;
+    }
+    if (pos >= loop.end) unawaited(_player.seek(loop.start));
+  }
+
+  void _toggleDualSubtitles() {
+    if (_secondaryCues.isEmpty) {
+      showToast(context, 'No original-language subtitles for this title');
+      return;
+    }
+    setState(() => _dualSubOn = !_dualSubOn);
   }
 
   void _startRunway() {
@@ -249,6 +378,10 @@ class _PlayerPageState extends State<PlayerPage> {
       language: _defaultTargetLang,
     );
     _loadedSub = track;
+    // Keep our own cue index in step with the track mpv renders: the hot-swap
+    // replaces a draft with the final pass, and a stale index would loop the
+    // wrong line.
+    _cues = CueTrack.fromFile(path);
     if (_subOn) await _player.setSubtitleTrack(track);
     if (!mounted) return;
     setState(() => _subStatus = null);
@@ -370,13 +503,40 @@ class _PlayerPageState extends State<PlayerPage> {
                 const SingleActivator(LogicalKeyboardKey.period): () =>
                     unawaited(_nudgeSubtitleDelay(100)),
                 const SingleActivator(LogicalKeyboardKey.slash): () =>
-                    unawaited(_nudgeSubtitleDelay(-_subDelayMs)),
+                    unawaited(_applySubtitleDelay(0)),
+                // Z / X are the precision pair: 50 ms is about the smallest drift
+                // a viewer can actually hear, and sits under the left hand.
+                const SingleActivator(LogicalKeyboardKey.keyZ): () =>
+                    unawaited(_nudgeSubtitleDelay(-50)),
+                const SingleActivator(LogicalKeyboardKey.keyX): () =>
+                    unawaited(_nudgeSubtitleDelay(50)),
+                const SingleActivator(LogicalKeyboardKey.keyD):
+                    _toggleDualSubtitles,
+                // A loops the current line; ⇧A replays it once. (The blueprint
+                // put replay on S, which is already subtitle toggle.)
+                const SingleActivator(LogicalKeyboardKey.keyA): _toggleCueLoop,
+                const SingleActivator(LogicalKeyboardKey.keyA, shift: true):
+                    _replayCue,
               },
               child: Focus(
                 autofocus: true,
                 child: Stack(
                   children: [
                     Positioned.fill(child: _video()),
+                    // The secondary language rides above the primary overlay that
+                    // media_kit draws; it is decoration, never a hit target.
+                    if (_dualSubOn && _secondaryCues.isNotEmpty)
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: DualSubtitleView(
+                            player: _player,
+                            track: _secondaryCues,
+                            appearance: widget.settings?.subtitleAppearance ??
+                                const SubtitleAppearance(),
+                            offset: Duration(milliseconds: _subDelayMs),
+                          ),
+                        ),
+                      ),
                     // Preparation state sits over the picture, never in front of it.
                     if (_runway != null)
                       PositionedDirectional(
@@ -408,6 +568,15 @@ class _PlayerPageState extends State<PlayerPage> {
               onToggleSubtitles: _toggleSubtitles,
               isFullscreen: isFullscreen(ctx),
               onToggleFullscreen: () => toggleFullscreen(ctx),
+              subtitleDelayMs: _subDelayMs,
+              onNudgeSubtitleDelay: (delta) =>
+                  unawaited(_nudgeSubtitleDelay(delta)),
+              onResetSubtitleDelay: () => unawaited(_applySubtitleDelay(0)),
+              readyThrough:
+                  _runway?.isComplete == true ? null : _runway?.readyThrough,
+              dualSubtitlesAvailable: _secondaryCues.isNotEmpty,
+              dualSubtitlesOn: _dualSubOn,
+              onToggleDualSubtitles: _toggleDualSubtitles,
             );
           },
         ),

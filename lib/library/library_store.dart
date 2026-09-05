@@ -13,8 +13,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
+import '../common/app_paths.dart';
 import '../platform/secure_files.dart';
 
 /// One media item in the library.
@@ -24,9 +24,11 @@ class LibraryEntry {
   /// Absolute path to the video file.
   final String path;
 
-  /// Optional base64 security-scoped bookmark for sandboxed re-access.
+  /// Base64-encoded security-scoped bookmark to the file, or null if the app
+  /// has direct filesystem access.
   final String? bookmark;
 
+  /// Epoch ms when this entry was added.
   final int addedAtMs;
 
   String get fileName => p.basename(path);
@@ -65,6 +67,8 @@ class LibraryEntry {
 
 /// A persisted, observable list of [LibraryEntry]s.
 class LibraryStore extends ChangeNotifier {
+  LibraryStore({File? storeFile}) : _file = storeFile;
+
   final List<LibraryEntry> _entries = [];
   List<LibraryEntry> get entries => List.unmodifiable(_entries);
 
@@ -72,8 +76,7 @@ class LibraryStore extends ChangeNotifier {
 
   Future<File> _storeFile() async {
     if (_file != null) return _file!;
-    final dir = await getApplicationSupportDirectory();
-    return _file = File(p.join(dir.path, 'library.json'));
+    return _file = AutoSubPaths.libraryFile();
   }
 
   /// Load the persisted library (call once at startup).

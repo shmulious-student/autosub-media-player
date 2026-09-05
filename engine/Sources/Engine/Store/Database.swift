@@ -16,14 +16,9 @@ public final class AppDatabase: @unchecked Sendable {
 
     init(pool: DatabasePool) { self.pool = pool }
 
-    /// Default on-disk location (internal disk, created if absent).
+    /// Default on-disk location in ~/.autosub (or $AUTOSUB_DATA_DIR).
     public static func appSupportURL() throws -> URL {
-        let base = try FileManager.default.url(
-            for: .applicationSupportDirectory, in: .userDomainMask,
-            appropriateFor: nil, create: true)
-        let dir = base.appendingPathComponent("AutoSub", isDirectory: true)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("autosub.sqlite")
+        AutoSubPaths.databaseURL
     }
 
     /// Open + migrate. `url == nil` → the default app-support path. Tests pass a

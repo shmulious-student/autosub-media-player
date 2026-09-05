@@ -50,16 +50,9 @@ public struct PipelineCheckpointStore: Sendable {
             .appendingPathComponent("\(fileNamePrefix)\(targetLang).json")
     }
 
-    /// Fallback location in Application Support in case media folder is read-only.
+    /// Fallback location in ~/.autosub/checkpoints in case media folder is read-only.
     public static func fallbackURL(videoPath: String, targetLang: String) -> URL {
-        let baseDir: URL
-        if let appSupport = try? FileManager.default.url(
-            for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) {
-            baseDir = appSupport.appendingPathComponent("AutoSub/checkpoints", isDirectory: true)
-        } else {
-            baseDir = FileManager.default.temporaryDirectory.appendingPathComponent("autosub-checkpoints", isDirectory: true)
-        }
-        try? FileManager.default.createDirectory(at: baseDir, withIntermediateDirectories: true)
+        let baseDir = AutoSubPaths.checkpointsDirectory
         let digest = SHA256.hash(data: Data(videoPath.utf8)).prefix(8).map { String(format: "%02x", $0) }.joined()
         let baseName = URL(fileURLWithPath: videoPath).deletingPathExtension().lastPathComponent
         return baseDir.appendingPathComponent("\(baseName)_\(digest)_\(targetLang).json")

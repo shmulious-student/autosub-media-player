@@ -741,6 +741,29 @@ public final class DaemonServer: @unchecked Sendable {
             return .ok(.json(newCfg.jsonObject()))
         }
 
+        // POST /cloud/verify — test the configured keys without spending quota.
+        //
+        // Optional body fields override the daemon's current config, so Settings
+        // can test a key the user just typed before committing to it.
+        server.POST["/cloud/verify"] = { [pipeline] req in
+            let obj = (try? JSONSerialization.jsonObject(with: Data(req.body))) as? [String: Any] ?? [:]
+            let current = Self.blockingAwait { await pipeline.currentCloudConfig }
+            let cfg = CloudConfig(
+                environment: current.environment,
+                groqApiKey: (obj["groqApiKey"] as? String) ?? current.groqApiKey,
+                geminiApiKey: (obj["geminiApiKey"] as? String) ?? current.geminiApiKey,
+                cloudflareAccountId: (obj["cloudflareAccountId"] as? String) ?? current.cloudflareAccountId,
+                cloudflareApiToken: (obj["cloudflareApiToken"] as? String) ?? current.cloudflareApiToken
+            )
+            let results = Self.blockingAwait { await CloudProbe.verify(config: cfg) }
+            let quota = Self.blockingAwait { await CloudRateLimiter.shared.snapshot() }
+            let payload = CloudProbeReport(providers: results, quota: quota)
+            guard let json = (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(payload))) as? [String: Any] else {
+                return Self.jsonError(500, "could not encode probe report")
+            }
+            return .ok(.json(json))
+        }
+
         // GET /jobs
         server.GET["/jobs"] = { [store] _ in
             Self.blockingAwait { await store.pruneExpiredHistory() }

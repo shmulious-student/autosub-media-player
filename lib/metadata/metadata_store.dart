@@ -12,8 +12,8 @@ import 'package:flutter/painting.dart';
 import 'package:http/http.dart' as http;
 import 'package:palette_generator/palette_generator.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
+import '../common/app_paths.dart';
 import 'filename_parser.dart';
 import 'title_metadata.dart';
 import 'tmdb_client.dart';
@@ -133,16 +133,12 @@ class MetadataStore extends ChangeNotifier {
 
   Future<File> _file() async {
     if (_storeFile != null) return _storeFile!;
-    final dir = await getApplicationSupportDirectory();
-    return _storeFile = File(p.join(dir.path, 'metadata.json'));
+    return _storeFile = AutoSubPaths.metadataFile();
   }
 
   Future<Directory> _posters() async {
     if (_posterDir != null) return _posterDir!;
-    final dir = await getApplicationSupportDirectory();
-    final d = Directory(p.join(dir.path, 'posters'));
-    if (!d.existsSync()) d.createSync(recursive: true);
-    return _posterDir = d;
+    return _posterDir = AutoSubPaths.postersDir();
   }
 
   Future<void> load() async {

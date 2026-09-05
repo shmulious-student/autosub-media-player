@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:path/path.dart' as p;
 
+import 'common/app_paths.dart';
 import 'engine/engine_client.dart';
 import 'engine/engine_supervisor.dart';
 import 'library/library_store.dart';
@@ -45,6 +46,9 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Required one-time init for media_kit / libmpv.
   MediaKit.ensureInitialized();
+
+  // Migrate existing data from legacy app support folder to ~/.autosub if needed.
+  await AutoSubPaths.migrateFromLegacySupport();
 
   // Launch + supervise the engine daemon as a child of this app (unless this is
   final settings = AppSettings();

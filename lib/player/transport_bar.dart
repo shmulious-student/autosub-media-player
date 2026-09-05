@@ -3,6 +3,14 @@
 // Player controls, ENTIRELY pinned LTR — time flows left→right; play/skip never
 // mirror, and ←/→ are always seek-back/forward regardless of locale. Hover-reveal
 // with a 2.5s auto-hide; gradient scrim behind the chrome.
+//
+// The bar also carries the two things a viewer needs mid-scene and should never
+// leave fullscreen for:
+//   - the precision sync stepper (±50ms), because noticing a drift and fixing it
+//     are the same moment, and
+//   - the runway band on the scrubber, which shades how far into the film
+//     subtitles actually exist, so a title still being prepared reads as "ready to
+//     here" instead of "broken after this point".
 
 import 'dart:async';
 
@@ -31,6 +39,13 @@ class TransportBar extends StatefulWidget {
     required this.onToggleSubtitles,
     required this.isFullscreen,
     required this.onToggleFullscreen,
+    this.subtitleDelayMs = 0,
+    this.onNudgeSubtitleDelay,
+    this.onResetSubtitleDelay,
+    this.readyThrough,
+    this.dualSubtitlesAvailable = false,
+    this.dualSubtitlesOn = false,
+    this.onToggleDualSubtitles,
   });
 
   final Player player;
@@ -39,6 +54,22 @@ class TransportBar extends StatefulWidget {
   final VoidCallback onToggleSubtitles;
   final bool isFullscreen;
   final VoidCallback onToggleFullscreen;
+
+  /// Current subtitle offset in milliseconds (positive = subtitles come later).
+  final int subtitleDelayMs;
+
+  /// Nudge the offset by a signed delta, or null to hide the stepper entirely
+  /// (previews and tests that pass no player state).
+  final void Function(int deltaMs)? onNudgeSubtitleDelay;
+  final VoidCallback? onResetSubtitleDelay;
+
+  /// How far into the media subtitles are prepared, or null when the whole track
+  /// is already there (or there is none at all) — nothing to shade either way.
+  final Duration? readyThrough;
+
+  final bool dualSubtitlesAvailable;
+  final bool dualSubtitlesOn;
+  final VoidCallback? onToggleDualSubtitles;
 
   @override
   State<TransportBar> createState() => _TransportBarState();
@@ -149,6 +180,9 @@ class _TransportBarState extends State<TransportBar> {
                           overlayColor: AppColors.amber.withValues(alpha: 0.2),
                           thumbShape: const RoundSliderThumbShape(
                               enabledThumbRadius: 6),
+                          trackShape: _RunwayTrackShape(
+                            _readyFraction(dur),
+                          ),
                         ),
                         child: Slider(
                           min: 0,
@@ -200,7 +234,36 @@ class _TransportBarState extends State<TransportBar> {
                       onTap: () => _seekBy(const Duration(seconds: 10)),
                     ),
                     const Spacer(),
+                    if (widget.onNudgeSubtitleDelay != null &&
+                        widget.subtitlesAvailable)
+                      _SyncStepper(
+                        delayMs: widget.subtitleDelayMs,
+                        onNudge: (delta) {
+                          widget.onNudgeSubtitleDelay!(delta);
+                          _reveal();
+                        },
+                        onReset: widget.onResetSubtitleDelay == null
+                            ? null
+                            : () {
+                                widget.onResetSubtitleDelay!();
+                                _reveal();
+                              },
+                      ),
                     _SpeedButton(player: widget.player, onChanged: _reveal),
+                    if (widget.dualSubtitlesAvailable)
+                      _Btn(
+                        icon: Icons.subtitles,
+                        tooltip: 'Dual-language subtitles (D)',
+                        color: widget.dualSubtitlesOn
+                            ? AppColors.amber
+                            : AppColors.neutral0,
+                        onTap: widget.onToggleDualSubtitles == null
+                            ? null
+                            : () {
+                                widget.onToggleDualSubtitles!();
+                                _reveal();
+                              },
+                      ),
                     _Btn(
                       icon: widget.subtitlesOn
                           ? Icons.closed_caption
@@ -236,6 +299,14 @@ class _TransportBarState extends State<TransportBar> {
         ),
       ),
     );
+  }
+
+  /// How much of the film has prepared subtitles, 0..1. Zero (draw nothing) when
+  /// the duration is unknown or the track is complete.
+  double _readyFraction(Duration duration) {
+    final ready = widget.readyThrough;
+    if (ready == null || duration <= Duration.zero) return 0;
+    return (ready.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0);
   }
 
   void _seekBy(Duration delta) {
@@ -317,4 +388,159 @@ class _SpeedButton extends StatelessWidget {
       },
     );
   }
+}
+
+/// Slider track that shades the "subtitles exist up to here" runway over the
+/// not-yet-played part of the film.
+///
+/// This is deliberately a track shape rather than a widget stacked behind the
+/// slider: only the shape knows the real track rect, and a runway band that is a
+/// few pixels off the scrubber it describes is worse than no band at all.
+class _RunwayTrackShape extends RoundedRectSliderTrackShape {
+  const _RunwayTrackShape(this.readyFraction);
+
+  /// 0..1 of the media duration; 0 means "nothing to shade".
+  final double readyFraction;
+
+  @override
+  void paint(
+    PaintingContext context,
+    Offset offset, {
+    required RenderBox parentBox,
+    required SliderThemeData sliderTheme,
+    required Animation<double> enableAnimation,
+    required TextDirection textDirection,
+    required Offset thumbCenter,
+    Offset? secondaryOffset,
+    bool isDiscrete = false,
+    bool isEnabled = false,
+    double additionalActiveTrackHeight = 2,
+  }) {
+    super.paint(
+      context,
+      offset,
+      parentBox: parentBox,
+      sliderTheme: sliderTheme,
+      enableAnimation: enableAnimation,
+      textDirection: textDirection,
+      thumbCenter: thumbCenter,
+      secondaryOffset: secondaryOffset,
+      isDiscrete: isDiscrete,
+      isEnabled: isEnabled,
+      additionalActiveTrackHeight: additionalActiveTrackHeight,
+    );
+    if (readyFraction <= 0 || readyFraction >= 1) return;
+
+    final rect = getPreferredRect(
+      parentBox: parentBox,
+      offset: offset,
+      sliderTheme: sliderTheme,
+      isEnabled: isEnabled,
+      isDiscrete: isDiscrete,
+    );
+    // Only the stretch that is both prepared and not yet played needs shading —
+    // the played part is already the active amber.
+    final readyRight = rect.left + rect.width * readyFraction;
+    final left = thumbCenter.dx.clamp(rect.left, rect.right);
+    if (readyRight <= left) return;
+
+    final band = Rect.fromLTRB(left, rect.top, readyRight, rect.bottom);
+    context.canvas.drawRRect(
+      RRect.fromRectAndRadius(band, Radius.circular(rect.height / 2)),
+      Paint()..color = AppColors.amber.withValues(alpha: 0.38),
+    );
+  }
+}
+
+/// The ±50ms precision stepper: "Sync − 0ms +", with a click on the readout
+/// resetting to zero.
+class _SyncStepper extends StatelessWidget {
+  const _SyncStepper({
+    required this.delayMs,
+    required this.onNudge,
+    this.onReset,
+  });
+
+  /// One press. Small enough to be safe to hold down, large enough to hear.
+  static const int stepMs = 50;
+
+  final int delayMs;
+  final void Function(int deltaMs) onNudge;
+  final VoidCallback? onReset;
+
+  @override
+  Widget build(BuildContext context) {
+    final nudged = delayMs != 0;
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: AppSpacing.x2),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.x1),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.35),
+        borderRadius: const BorderRadius.all(AppRadius.full),
+        border: Border.all(
+          color: nudged
+              ? AppColors.amber.withValues(alpha: 0.55)
+              : AppColors.neutral700,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _StepBtn(
+            icon: Icons.remove,
+            tooltip: 'Subtitles earlier 50ms (Z)',
+            onTap: () => onNudge(-stepMs),
+          ),
+          Tooltip(
+            message: nudged ? 'Reset subtitle sync (/)' : 'Subtitle sync',
+            child: GestureDetector(
+              onTap: nudged ? onReset : null,
+              child: SizedBox(
+                width: 64,
+                child: Text(
+                  nudged
+                      ? '${delayMs > 0 ? '+' : ''}${delayMs}ms'
+                      : '0ms',
+                  textAlign: TextAlign.center,
+                  style: AppType.monoTime.copyWith(
+                    color: nudged ? AppColors.amber : AppColors.neutral0,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          _StepBtn(
+            icon: Icons.add,
+            tooltip: 'Subtitles later 50ms (X)',
+            onTap: () => onNudge(stepMs),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StepBtn extends StatelessWidget {
+  const _StepBtn({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: tooltip,
+        child: IconButton(
+          onPressed: onTap,
+          icon: Icon(icon, size: 16),
+          color: AppColors.neutral0,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+          splashRadius: 14,
+        ),
+      );
 }

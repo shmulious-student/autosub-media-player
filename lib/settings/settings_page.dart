@@ -114,6 +114,16 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  void _syncBackendEnv() {
+    widget.manager.engine.setBackendEnv(
+      environment: s.backendEnvironment.wire,
+      groqApiKey: s.groqApiKey,
+      geminiApiKey: s.geminiApiKey,
+      cloudflareAccountId: s.cloudflareAccountId,
+      cloudflareApiToken: s.cloudflareApiToken,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -136,6 +146,116 @@ class _SettingsPageState extends State<SettingsPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('Settings', style: AppType.titleLg),
+
+                    SettingsSection(
+                      title: 'Backend environment',
+                      children: [
+                        SettingsRow(
+                          label: 'Inference engine',
+                          caption: s.backendEnvironment.blurb,
+                          control: SettingsSegmented<BackendEnvironment>(
+                            value: s.backendEnvironment,
+                            items: BackendEnvironment.values,
+                            labelOf: (b) => b.shortLabel,
+                            onChanged: (b) {
+                              s.backendEnvironment = b;
+                              _syncBackendEnv();
+                            },
+                          ),
+                        ),
+                        if (s.backendEnvironment == BackendEnvironment.cloud) ...[
+                          SettingsRow(
+                            label: 'Groq API key',
+                            caption:
+                                'Ultra-fast Whisper Large V3 ASR (~100× RT) + fast draft LLMs. Free tier: 14,400 req/day.',
+                            control: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SizedBox(
+                                  width: 240,
+                                  child: _CloudKeyField(
+                                    initialValue: s.groqApiKey,
+                                    hintText: 'gsk_...',
+                                    onChanged: (v) {
+                                      s.groqApiKey = v;
+                                      _syncBackendEnv();
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: AppSpacing.x2),
+                                StatusChip(
+                                  style: s.hasGroqKey
+                                      ? StatusStyles.ready
+                                      : StatusStyles.attention,
+                                  label: s.hasGroqKey ? 'Ready' : 'Not set',
+                                  size: StatusChipSize.sm,
+                                ),
+                              ],
+                            ),
+                          ),
+                          SettingsRow(
+                            label: 'Google AI Studio key',
+                            caption:
+                                'Gemini 2.0 Flash for state-of-the-art Hebrew gender agreement and grammar. Free tier: 1,500 req/day.',
+                            control: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SizedBox(
+                                  width: 240,
+                                  child: _CloudKeyField(
+                                    initialValue: s.geminiApiKey,
+                                    hintText: 'AIzaSy...',
+                                    onChanged: (v) {
+                                      s.geminiApiKey = v;
+                                      _syncBackendEnv();
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: AppSpacing.x2),
+                                StatusChip(
+                                  style: s.hasGeminiKey
+                                      ? StatusStyles.ready
+                                      : StatusStyles.attention,
+                                  label: s.hasGeminiKey ? 'Ready' : 'Not set',
+                                  size: StatusChipSize.sm,
+                                ),
+                              ],
+                            ),
+                          ),
+                          SettingsRow(
+                            label: 'Cloudflare Workers AI',
+                            caption:
+                                'Optional serverless edge fallback for Whisper ASR and LLMs. Free tier: 10,000 neurons/day.',
+                            control: SizedBox(
+                              width: 300,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  _CloudKeyField(
+                                    initialValue: s.cloudflareAccountId,
+                                    hintText: 'Account ID (32-char hex)',
+                                    obscureDefault: false,
+                                    onChanged: (v) {
+                                      s.cloudflareAccountId = v;
+                                      _syncBackendEnv();
+                                    },
+                                  ),
+                                  const SizedBox(height: AppSpacing.x2),
+                                  _CloudKeyField(
+                                    initialValue: s.cloudflareApiToken,
+                                    hintText: 'API Token',
+                                    onChanged: (v) {
+                                      s.cloudflareApiToken = v;
+                                      _syncBackendEnv();
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
 
                     SettingsSection(
                       title: 'Language & quality',
@@ -750,6 +870,68 @@ class _OpenSubtitlesKeyFieldState extends State<_OpenSubtitlesKeyField> {
           ),
           onPressed: () => setState(() => _obscure = !_obscure),
         ),
+      ),
+    );
+  }
+}
+
+class _CloudKeyField extends StatefulWidget {
+  const _CloudKeyField({
+    required this.initialValue,
+    required this.hintText,
+    required this.onChanged,
+    this.obscureDefault = true,
+  });
+
+  final String initialValue;
+  final String hintText;
+  final ValueChanged<String> onChanged;
+  final bool obscureDefault;
+
+  @override
+  State<_CloudKeyField> createState() => _CloudKeyFieldState();
+}
+
+class _CloudKeyFieldState extends State<_CloudKeyField> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initialValue,
+  );
+  late bool _obscure = widget.obscureDefault;
+
+  @override
+  void didUpdateWidget(covariant _CloudKeyField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialValue != widget.initialValue &&
+        _controller.text != widget.initialValue) {
+      _controller.text = widget.initialValue;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      obscureText: _obscure,
+      onChanged: widget.onChanged,
+      style: AppType.body,
+      decoration: InputDecoration(
+        isDense: true,
+        hintText: widget.hintText,
+        suffixIcon: widget.obscureDefault
+            ? IconButton(
+                icon: Icon(
+                  _obscure ? Icons.visibility_off : Icons.visibility,
+                  size: 18,
+                ),
+                onPressed: () => setState(() => _obscure = !_obscure),
+              )
+            : null,
       ),
     );
   }

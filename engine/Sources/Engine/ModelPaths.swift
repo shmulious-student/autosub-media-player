@@ -64,4 +64,17 @@ public struct ModelPaths: Sendable {
         }
         return ModelPaths(root: URL(fileURLWithPath: rootPath, isDirectory: true))
     }
+
+    /// Best-effort resolve that returns nil if storage is unmounted.
+    public static func resolveOptional(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        fileManager: FileManager = .default
+    ) -> ModelPaths? {
+        try? resolve(environment: environment, fileManager: fileManager)
+    }
+
+    /// Fallback placeholder when running strictly in cloud mode without local weights.
+    public static func cloudPlaceholder() -> ModelPaths {
+        ModelPaths(root: URL(fileURLWithPath: "/Volumes/EP2TB/autosub-models", isDirectory: true))
+    }
 }

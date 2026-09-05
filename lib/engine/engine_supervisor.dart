@@ -12,9 +12,15 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 class EngineSupervisor {
-  EngineSupervisor({this.modelsDir = '/Volumes/EP2TB/autosub-models'});
+  EngineSupervisor({
+    this.modelsDir = '/Volumes/EP2TB/autosub-models',
+    this.backendEnv,
+    this.cloudEnv,
+  });
 
   final String modelsDir;
+  final String Function()? backendEnv;
+  final Map<String, String> Function()? cloudEnv;
   Process? _proc;
   bool _stopped = false;
 
@@ -45,6 +51,13 @@ class EngineSupervisor {
     await _spawn();
   }
 
+  Future<void> restart() async {
+    _proc?.kill();
+    _proc = null;
+    await Future.delayed(const Duration(milliseconds: 300));
+    await _spawn();
+  }
+
   Future<void> _spawn() async {
     if (_stopped) return;
     final bin = _resolveBin();
@@ -53,10 +66,19 @@ class EngineSupervisor {
       return;
     }
     try {
+      final env = <String, String>{'AUTOSUB_MODELS': modelsDir};
+      if (cloudEnv != null) {
+        env.addAll(cloudEnv!());
+      }
+      final be = backendEnv?.call();
+      if (be != null && be.isNotEmpty) {
+        env['AUTOSUB_BACKEND_ENV'] = be;
+      }
+
       final proc = await Process.start(
         bin,
         ['daemon'],
-        environment: {'AUTOSUB_MODELS': modelsDir},
+        environment: env,
       );
       _proc = proc;
       // Drain output so the child never blocks on a full pipe.

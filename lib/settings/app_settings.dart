@@ -41,6 +41,30 @@ extension TranslationStrategyMeta on TranslationStrategy {
   };
 }
 
+/// Backend environment for ASR and translation inference.
+enum BackendEnvironment { local, cloud }
+
+extension BackendEnvironmentMeta on BackendEnvironment {
+  String get wire => name;
+
+  String get label => switch (this) {
+    BackendEnvironment.local => 'Local (On-Device Apple Silicon)',
+    BackendEnvironment.cloud => 'Cloud (Groq · Gemini · Cloudflare)',
+  };
+
+  String get shortLabel => switch (this) {
+    BackendEnvironment.local => 'Local',
+    BackendEnvironment.cloud => 'Cloud',
+  };
+
+  String get blurb => switch (this) {
+    BackendEnvironment.local =>
+      'Runs inference locally on Apple Silicon (WhisperKit + DictaLM/Qwen). 100% offline & private.',
+    BackendEnvironment.cloud =>
+      'Runs inference via free cloud accelerators (Groq Whisper + Gemini 2.0 Flash). 30×–50× faster, zero RAM impact.',
+  };
+}
+
 /// UI text size — the desktop Dynamic-Type control (DS §3.2.3).
 enum UiTextSize { s, m, l, xl }
 
@@ -63,6 +87,7 @@ class AppSettings extends ChangeNotifier {
   AppSettings({
     String targetLanguage = 'he',
     TranslationStrategy translationStrategy = TranslationStrategy.quality,
+    BackendEnvironment backendEnvironment = BackendEnvironment.local,
     int readingSpeedCps = 17,
     bool diagnostics = false,
     UiTextSize uiTextSize = UiTextSize.m,
@@ -70,9 +95,14 @@ class AppSettings extends ChangeNotifier {
     bool setupComplete = false,
     String tmdbApiKey = '',
     String openSubtitlesApiKey = '',
+    String groqApiKey = '',
+    String geminiApiKey = '',
+    String cloudflareAccountId = '',
+    String cloudflareApiToken = '',
     SubtitleAppearance subtitleAppearance = const SubtitleAppearance(),
   }) : _targetLanguage = targetLanguage,
        _translationStrategy = translationStrategy,
+       _backendEnvironment = backendEnvironment,
        _readingSpeedCps = readingSpeedCps,
        _diagnostics = diagnostics,
        _uiTextSize = uiTextSize,
@@ -80,10 +110,15 @@ class AppSettings extends ChangeNotifier {
        _setupComplete = setupComplete,
        _tmdbApiKey = tmdbApiKey,
        _openSubtitlesApiKey = openSubtitlesApiKey,
+       _groqApiKey = groqApiKey,
+       _geminiApiKey = geminiApiKey,
+       _cloudflareAccountId = cloudflareAccountId,
+       _cloudflareApiToken = cloudflareApiToken,
        _subtitleAppearance = subtitleAppearance;
 
   String _targetLanguage;
   TranslationStrategy _translationStrategy;
+  BackendEnvironment _backendEnvironment;
   int _readingSpeedCps;
   bool _diagnostics;
   UiTextSize _uiTextSize;
@@ -91,10 +126,15 @@ class AppSettings extends ChangeNotifier {
   bool _setupComplete;
   String _tmdbApiKey;
   String _openSubtitlesApiKey;
+  String _groqApiKey;
+  String _geminiApiKey;
+  String _cloudflareAccountId;
+  String _cloudflareApiToken;
   SubtitleAppearance _subtitleAppearance;
 
   String get targetLanguage => _targetLanguage;
   TranslationStrategy get translationStrategy => _translationStrategy;
+  BackendEnvironment get backendEnvironment => _backendEnvironment;
   int get readingSpeedCps => _readingSpeedCps;
   bool get diagnostics => _diagnostics;
   UiTextSize get uiTextSize => _uiTextSize;
@@ -112,9 +152,25 @@ class AppSettings extends ChangeNotifier {
   /// the fallback when no original-language subtitle is found. Stored locally only.
   String get openSubtitlesApiKey => _openSubtitlesApiKey;
 
+  /// Cloud AI service keys.
+  String get groqApiKey => _groqApiKey;
+  String get geminiApiKey => _geminiApiKey;
+  String get cloudflareAccountId => _cloudflareAccountId;
+  String get cloudflareApiToken => _cloudflareApiToken;
+
+  bool get hasGroqKey => _groqApiKey.trim().isNotEmpty;
+  bool get hasGeminiKey => _geminiApiKey.trim().isNotEmpty;
+  bool get hasCloudflareCredentials =>
+      _cloudflareAccountId.trim().isNotEmpty &&
+      _cloudflareApiToken.trim().isNotEmpty;
+  bool get hasAnyCloudKey =>
+      hasGroqKey || hasGeminiKey || hasCloudflareCredentials;
+
   set targetLanguage(String v) => _set(() => _targetLanguage = v);
   set translationStrategy(TranslationStrategy v) =>
       _set(() => _translationStrategy = v);
+  set backendEnvironment(BackendEnvironment v) =>
+      _set(() => _backendEnvironment = v);
   set readingSpeedCps(int v) => _set(() => _readingSpeedCps = v);
   set diagnostics(bool v) => _set(() => _diagnostics = v);
   set uiTextSize(UiTextSize v) => _set(() => _uiTextSize = v);
@@ -123,6 +179,11 @@ class AppSettings extends ChangeNotifier {
   set tmdbApiKey(String v) => _set(() => _tmdbApiKey = v.trim());
   set openSubtitlesApiKey(String v) =>
       _set(() => _openSubtitlesApiKey = v.trim());
+  set groqApiKey(String v) => _set(() => _groqApiKey = v.trim());
+  set geminiApiKey(String v) => _set(() => _geminiApiKey = v.trim());
+  set cloudflareAccountId(String v) =>
+      _set(() => _cloudflareAccountId = v.trim());
+  set cloudflareApiToken(String v) => _set(() => _cloudflareApiToken = v.trim());
   set subtitleAppearance(SubtitleAppearance v) =>
       _set(() => _subtitleAppearance = v);
 
@@ -146,6 +207,7 @@ class AppSettings extends ChangeNotifier {
   Future<void> resetToDefaults() async {
     _targetLanguage = 'he';
     _translationStrategy = TranslationStrategy.quality;
+    _backendEnvironment = BackendEnvironment.local;
     _readingSpeedCps = 17;
     _diagnostics = false;
     _uiTextSize = UiTextSize.m;
@@ -153,6 +215,10 @@ class AppSettings extends ChangeNotifier {
     _setupComplete = false;
     _tmdbApiKey = '';
     _openSubtitlesApiKey = '';
+    _groqApiKey = '';
+    _geminiApiKey = '';
+    _cloudflareAccountId = '';
+    _cloudflareApiToken = '';
     _subtitleAppearance = const SubtitleAppearance();
     notifyListeners();
     await _save();
@@ -176,6 +242,10 @@ class AppSettings extends ChangeNotifier {
         (e) => e.name == j['translation_strategy'],
         orElse: () => _translationStrategy,
       );
+      _backendEnvironment = BackendEnvironment.values.firstWhere(
+        (e) => e.name == j['backend_environment'],
+        orElse: () => _backendEnvironment,
+      );
       _readingSpeedCps =
           (j['reading_speed_cps'] as num?)?.toInt() ?? _readingSpeedCps;
       _diagnostics = (j['diagnostics'] as bool?) ?? false; // never default-on
@@ -188,6 +258,12 @@ class AppSettings extends ChangeNotifier {
       _tmdbApiKey = (j['tmdb_api_key'] as String?) ?? _tmdbApiKey;
       _openSubtitlesApiKey =
           (j['open_subtitles_api_key'] as String?) ?? _openSubtitlesApiKey;
+      _groqApiKey = (j['groq_api_key'] as String?) ?? _groqApiKey;
+      _geminiApiKey = (j['gemini_api_key'] as String?) ?? _geminiApiKey;
+      _cloudflareAccountId =
+          (j['cloudflare_account_id'] as String?) ?? _cloudflareAccountId;
+      _cloudflareApiToken =
+          (j['cloudflare_api_token'] as String?) ?? _cloudflareApiToken;
       _subtitleAppearance = SubtitleAppearance.fromJson(
         j['subtitle_appearance'],
       );
@@ -204,6 +280,7 @@ class AppSettings extends ChangeNotifier {
         jsonEncode({
           'target_language': _targetLanguage,
           'translation_strategy': _translationStrategy.name,
+          'backend_environment': _backendEnvironment.name,
           'reading_speed_cps': _readingSpeedCps,
           'diagnostics': _diagnostics,
           'ui_text_size': _uiTextSize.name,
@@ -211,6 +288,10 @@ class AppSettings extends ChangeNotifier {
           'setup_complete': _setupComplete,
           'tmdb_api_key': _tmdbApiKey,
           'open_subtitles_api_key': _openSubtitlesApiKey,
+          'groq_api_key': _groqApiKey,
+          'gemini_api_key': _geminiApiKey,
+          'cloudflare_account_id': _cloudflareAccountId,
+          'cloudflare_api_token': _cloudflareApiToken,
           'subtitle_appearance': _subtitleAppearance.toJson(),
         }),
       );

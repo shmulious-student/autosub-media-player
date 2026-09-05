@@ -27,3 +27,7 @@ engine/.swiftpm/
 
 # --- Generated test fixtures (regenerate via scripts/make_test_fixture.py) ---
 fixtures/
+
+# --- Local secrets & API keys (NEVER commit) ---
+secrets/
+*.sec

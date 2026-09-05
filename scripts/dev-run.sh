@@ -28,24 +28,34 @@ export HF_HOME="${HF_HOME:-$AUTOSUB_MODELS/hf-cache}"
 export HUGGINGFACE_HUB_CACHE="${HUGGINGFACE_HUB_CACHE:-$AUTOSUB_MODELS/hf-cache}"
 
 ENGINE_ONLY=0
+USE_CLOUD=0
 SWIFT_CONFIG="debug"   # app's dev fallback launches .build/debug/AutoSubEngine
 for arg in "$@"; do
   case "$arg" in
     --engine-only) ENGINE_ONLY=1 ;;
     --release)     SWIFT_CONFIG="release" ;;
+    --cloud)       USE_CLOUD=1 ;;
     -h|--help)     sed -n '3,22p' "$0"; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
 
-# --- Preflight: the engine is useless without its model weights. ---
-if [ ! -d "$AUTOSUB_MODELS/llm" ]; then
-  echo "✗ AUTOSUB_MODELS not found at '$AUTOSUB_MODELS/llm'." >&2
-  echo "  Is the external drive mounted? (docs/MODELS.md)" >&2
-  exit 1
+if [ "$USE_CLOUD" -eq 1 ]; then
+  export AUTOSUB_BACKEND_ENV="cloud"
+  echo "☁ Running in CLOUD backend mode (Groq + Gemini + Cloudflare)"
 fi
-command -v llama-server >/dev/null 2>&1 || \
-  echo "⚠ llama-server not on PATH — translation will fail until it's installed (brew install llama.cpp)." >&2
+
+# --- Preflight: the local engine needs models; cloud mode does not. ---
+if [ "$USE_CLOUD" -eq 0 ] && [ "${AUTOSUB_BACKEND_ENV:-local}" != "cloud" ]; then
+  if [ ! -d "$AUTOSUB_MODELS/llm" ]; then
+    echo "✗ AUTOSUB_MODELS not found at '$AUTOSUB_MODELS/llm'." >&2
+    echo "  Is the external drive mounted? (docs/MODELS.md)" >&2
+    echo "  Or run with --cloud to use free cloud AI accelerators with no disk requirement." >&2
+    exit 1
+  fi
+  command -v llama-server >/dev/null 2>&1 || \
+    echo "⚠ llama-server not on PATH — translation will fail until it's installed (brew install llama.cpp)." >&2
+fi
 
 # --- 1. Rebuild the engine. ---
 # Heavy compute lives in llama-server + CoreML (separate optimized binaries), not
@@ -59,7 +69,11 @@ echo "  built: $ENGINE_BIN"
 if [ "$ENGINE_ONLY" -eq 1 ]; then
   echo "▶ starting daemon on 127.0.0.1:${AUTOSUB_DAEMON_PORT:-8770} (Ctrl-C to stop)…"
   pkill -f 'AutoSubEngine daemon' 2>/dev/null || true
-  exec "$ENGINE_BIN" daemon
+  if [ "$USE_CLOUD" -eq 1 ]; then
+    exec "$ENGINE_BIN" daemon --cloud
+  else
+    exec "$ENGINE_BIN" daemon
+  fi
 fi
 
 # --- 2b. Full app: it spawns the freshly built daemon as a child. ---

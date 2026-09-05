@@ -628,8 +628,51 @@ public final class DaemonServer: @unchecked Sendable {
 
     private func registerRoutes() {
         // GET /health
-        server.GET["/health"] = { _ in
-            .ok(.json(["status": "ok"]))
+        server.GET["/health"] = { [pipeline] _ in
+            let env = Self.blockingAwait { await pipeline.currentBackendEnvironment }
+            let quota = Self.blockingAwait { await CloudRateLimiter.shared.snapshot() }
+            let quotaJson = (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(quota))) as? [String: Any] ?? [:]
+            return .ok(.json([
+                "status": "ok",
+                "backend": env.rawValue,
+                "cloudQuota": quotaJson
+            ]))
+        }
+
+        // GET /backend-env
+        server.GET["/backend-env"] = { [pipeline] _ in
+            let cfg = Self.blockingAwait { await pipeline.currentCloudConfig }
+            let quota = Self.blockingAwait { await CloudRateLimiter.shared.snapshot() }
+            let quotaJson = (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(quota))) as? [String: Any] ?? [:]
+            var res = cfg.jsonObject()
+            res["cloudQuota"] = quotaJson
+            return .ok(.json(res))
+        }
+
+        // POST /backend-env
+        server.POST["/backend-env"] = { [pipeline] req in
+            guard let obj = (try? JSONSerialization.jsonObject(with: Data(req.body))) as? [String: Any] else {
+                return Self.jsonError(400, "expected JSON body")
+            }
+            let envStr = (obj["environment"] as? String)?.lowercased() ?? "local"
+            let backendEnv: BackendEnvironment = envStr == "cloud" ? .cloud : .local
+
+            let currentCfg = Self.blockingAwait { await pipeline.currentCloudConfig }
+            let groq = (obj["groqApiKey"] as? String) ?? currentCfg.groqApiKey
+            let gemini = (obj["geminiApiKey"] as? String) ?? currentCfg.geminiApiKey
+            let cfAcc = (obj["cloudflareAccountId"] as? String) ?? currentCfg.cloudflareAccountId
+            let cfTok = (obj["cloudflareApiToken"] as? String) ?? currentCfg.cloudflareApiToken
+
+            let newCfg = CloudConfig(
+                environment: backendEnv,
+                groqApiKey: groq,
+                geminiApiKey: gemini,
+                cloudflareAccountId: cfAcc,
+                cloudflareApiToken: cfTok
+            )
+
+            Self.blockingAwait { await pipeline.setCloudConfig(newCfg) }
+            return .ok(.json(newCfg.jsonObject()))
         }
 
         // GET /jobs

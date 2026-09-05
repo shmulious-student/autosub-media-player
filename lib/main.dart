@@ -47,12 +47,24 @@ Future<void> main() async {
   MediaKit.ensureInitialized();
 
   // Launch + supervise the engine daemon as a child of this app (unless this is
-  // a UI-only run — see kNoEngine — in which case no models are ever loaded).
-  final engine = EngineSupervisor();
-  if (!kNoEngine) engine.start();
-
   final settings = AppSettings();
   await settings.load();
+
+  // Launch + supervise the native Mac engine as a child process (unless this is
+  // a UI-only run — see kNoEngine — in which case no models are ever loaded).
+  final engine = EngineSupervisor(
+    backendEnv: () => settings.backendEnvironment.wire,
+    cloudEnv: () => {
+      if (settings.groqApiKey.isNotEmpty) 'GROQ_API_KEY': settings.groqApiKey,
+      if (settings.geminiApiKey.isNotEmpty)
+        'GEMINI_API_KEY': settings.geminiApiKey,
+      if (settings.cloudflareAccountId.isNotEmpty)
+        'CLOUDFLARE_ACCOUNT_ID': settings.cloudflareAccountId,
+      if (settings.cloudflareApiToken.isNotEmpty)
+        'CLOUDFLARE_API_TOKEN': settings.cloudflareApiToken,
+    },
+  );
+  if (!kNoEngine) engine.start();
 
   final store = LibraryStore();
   await store.load();

@@ -75,6 +75,8 @@ public actor SubtitlePipeline {
     /// What THIS Mac can sustain — context size, whether both model tiers may be
     /// warm at once, whether ASR and LLM must be serialized (see InferenceConfig).
     private let machineConfig: InferenceConfig
+    private var cloudConfig: CloudConfig
+    private var environment: BackendEnvironment
 
     // Warm DictaLM servers, started lazily and reused, keyed by model path so a
     // strategy that needs BOTH the 12B (quality) and 7B (fast) keeps each loaded
@@ -84,16 +86,37 @@ public actor SubtitlePipeline {
 
     // The warm WhisperKit ASR (CoreML load is expensive — keep it across jobs).
     private var asrService: WhisperKitASR?
+    // Cloud ASR service
+    private var cloudASR: CloudASRService?
 
     /// `whisperModelName` nil ⇒ auto-resolve the best INSTALLED model (turbo ▸ … ▸ base)
     /// at first use, so we get large-v3-turbo accuracy when present without breaking on a
     /// base-only install. Pass an explicit name to pin one.
-    public init(modelPaths: ModelPaths, whisperModelName: String? = nil,
-                machineConfig: InferenceConfig = .current) {
-        self.modelPaths = modelPaths
+    public init(
+        modelPaths: ModelPaths? = nil,
+        whisperModelName: String? = nil,
+        machineConfig: InferenceConfig = .current,
+        cloudConfig: CloudConfig = .fromEnvironment()
+    ) {
+        self.modelPaths = modelPaths ?? ModelPaths.resolveOptional() ?? ModelPaths.cloudPlaceholder()
         self.whisperModelName = whisperModelName
         self.machineConfig = machineConfig
+        self.cloudConfig = cloudConfig
+        self.environment = cloudConfig.environment
     }
+
+    public func setBackendEnvironment(_ env: BackendEnvironment) {
+        self.environment = env
+    }
+
+    public func setCloudConfig(_ config: CloudConfig) {
+        self.cloudConfig = config
+        self.environment = config.environment
+        self.cloudASR = nil
+    }
+
+    public var currentBackendEnvironment: BackendEnvironment { environment }
+    public var currentCloudConfig: CloudConfig { cloudConfig }
 
     /// The warm WhisperKit instance, created once and reused.
     private func warmASR() -> WhisperKitASR {
@@ -101,6 +124,14 @@ public actor SubtitlePipeline {
         let name = whisperModelName ?? WhisperKitASR.resolveBestModel(modelPaths: modelPaths)
         let s = WhisperKitASR(modelPaths: modelPaths, modelName: name)
         asrService = s
+        return s
+    }
+
+    /// The warm Cloud ASR instance.
+    private func warmCloudASR() -> CloudASRService {
+        if let cloudASR { return cloudASR }
+        let s = CloudASRService(config: cloudConfig)
+        cloudASR = s
         return s
     }
 
@@ -124,8 +155,19 @@ public actor SubtitlePipeline {
     }
 
     /// Quality (12B) and fast (7B) chat clients on demand.
-    private func qualityChat() async throws -> any LlamaChat { try await warmChat(in: modelPaths.llm) }
-    private func fastChat() async throws -> any LlamaChat { try await warmChat(in: modelPaths.llmFast) }
+    private func qualityChat() async throws -> any LlamaChat {
+        if environment == .cloud {
+            return CloudChatClient(config: cloudConfig, tier: .quality)
+        }
+        return try await warmChat(in: modelPaths.llm)
+    }
+
+    private func fastChat() async throws -> any LlamaChat {
+        if environment == .cloud {
+            return CloudChatClient(config: cloudConfig, tier: .fast)
+        }
+        return try await warmChat(in: modelPaths.llmFast)
+    }
 
     /// Generate a one-line "role in the plot" for each character, grounded in the
     /// title's plot overview, using the warm fast model. Best-effort and clearly
@@ -261,11 +303,19 @@ public actor SubtitlePipeline {
             // they share unified memory bandwidth, and on a memory-tight Mac the
             // overlap is what causes swap. The gate is a pass-through where the
             // machine can afford it (InferenceConfig.serializeASRAndLLM).
-            let warmASRService = warmASR()
-            let asr = try await GPUGate.shared.withExclusiveAccess {
-                try await warmASRService.transcribe(
+            let asr: ASRResult
+            if environment == .cloud {
+                let cloudASRService = warmCloudASR()
+                asr = try await cloudASRService.transcribe(
                     samples: decoded.samples, sampleRate: decoded.sampleRate,
                     sourceLanguageHint: originalHint)
+            } else {
+                let warmASRService = warmASR()
+                asr = try await GPUGate.shared.withExclusiveAccess {
+                    try await warmASRService.transcribe(
+                        samples: decoded.samples, sampleRate: decoded.sampleRate,
+                        sourceLanguageHint: originalHint)
+                }
             }
             onProgress(0.45, "segment")
             // Deterministic validation: collapse ASR repetition loops, drop empties,
@@ -401,9 +451,8 @@ public actor SubtitlePipeline {
         var qaFlags: [String] = []
         switch strategy {
         case .quality, .fast:
-            let dir = strategy == .fast ? modelPaths.llmFast : modelPaths.llm
             onProgress(0.55, "translate")
-            let chat = try await warmChat(in: dir)
+            let chat = try await (strategy == .fast ? fastChat() : qualityChat())
             let out = try await ScenePacketTranslator(chat: chat, format: .lean, sourceLang: sourceLang, nameGlossary: nameGlossary).translate(
                 packets: packets, targetLang: targetLang, knownCharacters: glossary,
                 cached: cachedTranslations,

@@ -299,14 +299,26 @@ func refineCommand(_ args: [String]) async {
 
 // MARK: - daemon
 
-func daemonCommand() {
-    let modelPaths = resolveModels()
+func daemonCommand(_ args: [String] = []) {
+    let isCloud = args.contains("--cloud") || (ProcessInfo.processInfo.environment["AUTOSUB_BACKEND_ENV"] ?? "").lowercased() == "cloud"
+    var cloudConfig = CloudConfig.fromEnvironment()
+    if isCloud {
+        cloudConfig.environment = .cloud
+    }
+
+    let modelPaths: ModelPaths
+    if cloudConfig.environment == .cloud {
+        modelPaths = ModelPaths.resolveOptional() ?? ModelPaths.cloudPlaceholder()
+        err("[AutoSubEngine] backend: CLOUD (Groq + Gemini + Cloudflare) — no external drive required")
+    } else {
+        modelPaths = resolveModels()
+        err("[AutoSubEngine] backend: LOCAL (On-Device Apple Silicon)")
+    }
+
     // Default 8770 (8765 commonly collides with Unity's Mono-HTTPAPI on dev
     // machines); $AUTOSUB_DAEMON_PORT overrides it. Host stays loopback-only.
     let port = ProcessInfo.processInfo.environment["AUTOSUB_DAEMON_PORT"].flatMap(Int.init) ?? 8770
-    // ONE warm pipeline owned for the daemon's whole lifetime — the heavy
-    // DictaLM model loads lazily on the first real job and is reused thereafter.
-    let pipeline = SubtitlePipeline(modelPaths: modelPaths)
+    let pipeline = SubtitlePipeline(modelPaths: modelPaths, cloudConfig: cloudConfig)
     // SQLite source of truth (internal disk). If it can't open, run without
     // persistence rather than refusing to start — a non-persisted queue still works.
     let sqlite: SqliteStore?
@@ -324,7 +336,7 @@ func daemonCommand() {
         err("[AutoSubEngine] daemon failed: \(error)")
         exit(EXIT_FAILURE)
     }
-    err("[AutoSubEngine] daemon up on 127.0.0.1:\(port) — POST /jobs to enqueue.")
+    err("[AutoSubEngine] daemon up on 127.0.0.1:\(port) [\(cloudConfig.environment.rawValue)] — POST /jobs to enqueue.")
     // Keep the process alive forever (Swifter serves on its own GCD queue and the
     // worker runs on a detached Task).
     dispatchMain()
@@ -333,7 +345,8 @@ func daemonCommand() {
 // MARK: - dispatch
 
 let argv = Array(CommandLine.arguments.dropFirst())
-switch argv.first {
+let firstArg = argv.first ?? ""
+switch firstArg {
 case "process":
     await processCommand(Array(argv.dropFirst()))
 case "benchmark":
@@ -344,6 +357,8 @@ case "tiered":
     await tieredCommand(Array(argv.dropFirst()))
 case "refine":
     await refineCommand(Array(argv.dropFirst()))
+case "daemon":
+    daemonCommand(Array(argv.dropFirst()))
 default:
-    daemonCommand()
+    daemonCommand(argv)
 }

@@ -145,6 +145,45 @@ class EngineClient {
     }
   }
 
+  /// Query current daemon backend environment ('local' or 'cloud') and quotas.
+  Future<Map<String, dynamic>?> getBackendEnv() async {
+    try {
+      final r = await http.get(_u('/backend-env')).timeout(_timeout);
+      if (r.statusCode != 200) return null;
+      return jsonDecode(r.body) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Configure daemon backend environment and keys on the fly.
+  Future<bool> setBackendEnv({
+    required String environment,
+    String? groqApiKey,
+    String? geminiApiKey,
+    String? cloudflareAccountId,
+    String? cloudflareApiToken,
+  }) async {
+    try {
+      final r = await http
+          .post(
+            _u('/backend-env'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'environment': environment,
+              'groqApiKey': ?groqApiKey,
+              'geminiApiKey': ?geminiApiKey,
+              'cloudflareAccountId': ?cloudflareAccountId,
+              'cloudflareApiToken': ?cloudflareApiToken,
+            }),
+          )
+          .timeout(_timeout);
+      return r.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Best-effort language tag from the first tagged audio track, if the daemon can
   /// probe the media. Returns null for offline daemon, untagged files, or errors.
   Future<String?> audioLanguage(String path) async {

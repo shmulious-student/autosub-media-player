@@ -93,6 +93,7 @@ class _SeriesDetailPageState extends State<SeriesDetailPage> {
           title: e.displayTitle,
           autoPlay: true,
           settings: widget.settings,
+          manager: widget.manager,
         ),
       ),
     );

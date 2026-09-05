@@ -9,16 +9,19 @@
 // IMPORTANT (licensing, SPEC §3): media_kit must be the playback-only, LGPL-safe
 // libmpv build. Never enable FFmpeg `--enable-gpl`.
 
-import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-import 'package:path/path.dart' as p;
 
+import '../library/processing_manager.dart';
 import '../settings/app_settings.dart';
+import '../ui/components/toast.dart';
 import '../ui/tokens.dart';
+import 'preparing_pill.dart';
+import 'subtitle_runway.dart';
 import 'transport_bar.dart';
 
 const String _defaultTargetLang = 'he';
@@ -32,6 +35,7 @@ class PlayerPage extends StatefulWidget {
     this.autoPlay = false,
     this.loop = false,
     this.settings,
+    this.manager,
   });
 
   final String? videoPath;
@@ -40,6 +44,11 @@ class PlayerPage extends StatefulWidget {
   final bool autoPlay;
   final bool loop;
   final AppSettings? settings;
+
+  /// Lets the player ask the engine to prepare THIS title first and watch the
+  /// sidecar appear. Null in previews/tests: playback still works, there is just
+  /// nothing preparing subtitles in the background.
+  final ProcessingManager? manager;
 
   @override
   State<PlayerPage> createState() => _PlayerPageState();
@@ -52,6 +61,10 @@ class _PlayerPageState extends State<PlayerPage> {
   SubtitleTrack? _loadedSub; // the Hebrew track, when one exists
   bool _subOn = true;
   String? _subStatus;
+  SubtitleRunway? _runway;
+  int _appliedRevision = -1;
+  bool _announcedSubtitles = false;
+  StreamSubscription<Duration>? _durationSub;
   BuildContext? _controlsContext; // captured inside the Video subtree
 
   SubtitleViewConfiguration get _subtitleViewConfiguration {
@@ -75,6 +88,7 @@ class _PlayerPageState extends State<PlayerPage> {
       ),
     );
     widget.settings?.addListener(_onSettingsChanged);
+    _startRunway();
     _maybeOpen();
   }
 
@@ -82,44 +96,86 @@ class _PlayerPageState extends State<PlayerPage> {
     if (mounted) setState(() {});
   }
 
-  String? _resolveSubtitle(String videoPath) {
-    if (widget.subtitlePath != null) return widget.subtitlePath;
-    final sibling = p.join(
-      p.dirname(videoPath),
-      '${p.basenameWithoutExtension(videoPath)}.$_defaultTargetLang.srt',
-    );
-    try {
-      if (File(sibling).existsSync()) return sibling;
-    } catch (_) {}
-    return null;
-  }
-
   Future<void> _maybeOpen() async {
     final path = widget.videoPath;
     if (path == null) return;
 
+    // Open FIRST. Nothing about subtitle preparation is allowed to delay the
+    // first frame — everything else in this class happens after playback starts.
     await _player.open(Media(path), play: widget.autoPlay);
     if (widget.loop) {
       await _player.setPlaylistMode(PlaylistMode.loop);
     }
 
-    final sub = _resolveSubtitle(path);
-    if (sub != null) {
-      final track = SubtitleTrack.uri(
-        sub,
-        title: 'Hebrew',
-        language: _defaultTargetLang,
-      );
-      _loadedSub = track;
-      await _player.setSubtitleTrack(track);
-      if (mounted) {
-        setState(() {
-          _subOn = true;
-          _subStatus = 'Hebrew subtitles loaded';
-        });
+    // The runway needs the media duration to tell "prepared to the end" from
+    // "prepared up to here".
+    _durationSub = _player.stream.duration.listen((d) {
+      _runway?.setMediaDuration(d);
+    });
+
+    await _applyRunwaySubtitle();
+    // Only now, with the picture already up, ask the engine to prepare this title
+    // ahead of whatever the background sweep was doing.
+    if (_runway?.isComplete != true) {
+      unawaited(_runway?.requestPreparation());
+    }
+  }
+
+  void _startRunway() {
+    final path = widget.videoPath;
+    if (path == null) return;
+    final runway = SubtitleRunway(
+      videoPath: path,
+      lang: _defaultTargetLang,
+      manager: widget.manager,
+    );
+    // An explicitly-passed subtitle wins, so a caller can still pin a file.
+    _runway = runway;
+    runway.addListener(_onRunwayChanged);
+    runway.start();
+  }
+
+  void _onRunwayChanged() {
+    if (!mounted) return;
+    setState(() {}); // refresh the pill
+    unawaited(_applyRunwaySubtitle());
+  }
+
+  /// Load (or hot-swap) the subtitle track for whatever is on disk right now.
+  ///
+  /// This runs mid-playback: the draft written by the progressive strategy is
+  /// replaced by the final pass, and the viewer sees the better track appear
+  /// without the video so much as stuttering. Position is untouched by
+  /// `setSubtitleTrack`, so there is nothing to restore.
+  Future<void> _applyRunwaySubtitle() async {
+    final runway = _runway;
+    final path = widget.subtitlePath ?? runway?.path;
+    if (path == null) {
+      if (mounted && _subStatus == null) {
+        setState(() => _subStatus = 'Subtitles will appear when they are ready');
       }
-    } else {
-      if (mounted) setState(() => _subStatus = 'No subtitles for this title');
+      return;
+    }
+    // A pinned subtitle is loaded once; a runway one reloads on every revision.
+    final revision = widget.subtitlePath != null ? 0 : (runway?.revision ?? 0);
+    if (revision == _appliedRevision) return;
+    _appliedRevision = revision;
+
+    final track = SubtitleTrack.uri(
+      path,
+      title: 'Hebrew',
+      language: _defaultTargetLang,
+    );
+    _loadedSub = track;
+    if (_subOn) await _player.setSubtitleTrack(track);
+    if (!mounted) return;
+    setState(() => _subStatus = null);
+
+    // Announce the arrival once — a track appearing mid-film is easy to miss.
+    if (!_announcedSubtitles && widget.subtitlePath == null) {
+      _announcedSubtitles = true;
+      showToast(context, 'Hebrew subtitles are ready',
+          variant: ToastVariant.success);
     }
   }
 
@@ -160,6 +216,9 @@ class _PlayerPageState extends State<PlayerPage> {
   @override
   void dispose() {
     widget.settings?.removeListener(_onSettingsChanged);
+    _durationSub?.cancel();
+    _runway?.removeListener(_onRunwayChanged);
+    _runway?.dispose();
     _player.dispose();
     super.dispose();
   }
@@ -222,25 +281,42 @@ class _PlayerPageState extends State<PlayerPage> {
               },
               child: Focus(
                 autofocus: true,
-                child: Video(
-                  controller: _controller,
-                  subtitleViewConfiguration: _subtitleViewConfiguration,
-                  controls: (state) => Builder(
-                    builder: (ctx) {
-                      _controlsContext = ctx;
-                      return TransportBar(
-                        player: _player,
-                        subtitlesAvailable: _loadedSub != null,
-                        subtitlesOn: _subOn,
-                        onToggleSubtitles: _toggleSubtitles,
-                        isFullscreen: isFullscreen(ctx),
-                        onToggleFullscreen: () => toggleFullscreen(ctx),
-                      );
-                    },
-                  ),
+                child: Stack(
+                  children: [
+                    Positioned.fill(child: _video()),
+                    // Preparation state sits over the picture, never in front of it.
+                    if (_runway != null)
+                      PositionedDirectional(
+                        top: AppSpacing.x4,
+                        start: AppSpacing.x4,
+                        child: PreparingPill(
+                          runway: _runway!,
+                          onRetry: () =>
+                              unawaited(_runway!.requestPreparation(force: true)),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),
     );
   }
+
+  Widget _video() => Video(
+        controller: _controller,
+        subtitleViewConfiguration: _subtitleViewConfiguration,
+        controls: (state) => Builder(
+          builder: (ctx) {
+            _controlsContext = ctx;
+            return TransportBar(
+              player: _player,
+              subtitlesAvailable: _loadedSub != null,
+              subtitlesOn: _subOn,
+              onToggleSubtitles: _toggleSubtitles,
+              isFullscreen: isFullscreen(ctx),
+              onToggleFullscreen: () => toggleFullscreen(ctx),
+            );
+          },
+        ),
+      );
 }

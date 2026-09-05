@@ -124,6 +124,7 @@ class _TitleDetailPageState extends State<TitleDetailPage> {
           title: _displayName,
           autoPlay: true,
           settings: widget.settings,
+          manager: widget.manager,
         ),
       ),
     );

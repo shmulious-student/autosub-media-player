@@ -274,6 +274,7 @@ class _LibraryPageState extends State<LibraryPage> {
           title: entry.displayTitle,
           autoPlay: true,
           settings: widget.settings,
+          manager: widget.manager,
         ),
       ),
     );
